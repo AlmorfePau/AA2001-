@@ -10,6 +10,9 @@ interface NavbarProps {
 }
 
 const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
+  // Only reveal advanced tools to Department Head, Admin, and Executive
+  const hideControls = user.role === UserRole.EMPLOYEE || user.role === UserRole.SUPERVISOR;
+
   return (
     <nav className="bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 md:px-8">
@@ -18,8 +21,8 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
             <div className="flex items-center">
               <Logo size="sm" className="!flex-row !gap-3" />
             </div>
-            {/* Conditional navigation for non-employee roles */}
-            {user.role !== UserRole.EMPLOYEE && (
+            
+            {!hideControls && (
               <div className="hidden md:flex items-center gap-8 text-[11px] font-black uppercase tracking-widest text-slate-400">
                 <a href="#" className="text-blue-600 relative after:content-[''] after:absolute after:bottom-[-29px] after:left-0 after:w-full after:h-1 after:bg-blue-600 after:rounded-t-full">Console</a>
                 <a href="#" className="hover:text-slate-900 transition-colors">Resources</a>
@@ -30,8 +33,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
           </div>
 
           <div className="flex items-center gap-2 md:gap-4">
-            {/* Conditional search bar for non-employee roles */}
-            {user.role !== UserRole.EMPLOYEE && (
+            {!hideControls && (
               <div className="hidden lg:flex items-center relative group">
                 <Search className="absolute left-4 w-4 h-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
                 <input 
@@ -64,7 +66,6 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                 {user.name.charAt(0).toUpperCase()}
               </div>
 
-              {/* Profile Dropdown */}
               <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all py-2 translate-y-2 group-hover:translate-y-0 z-50">
                 <div className="px-5 py-3 border-b border-slate-50 mb-1 sm:hidden">
                   <p className="text-xs font-black text-slate-900">{user.name}</p>
