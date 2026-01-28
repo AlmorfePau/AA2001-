@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
-import { LogIn, Shield, User as UserIcon, Lock, ChevronDown, Activity, Cpu } from 'lucide-react';
+import { LogIn, Shield, User as UserIcon, Lock, ChevronDown, Activity, Cpu, CheckCircle2, AlertCircle } from 'lucide-react';
 import Logo from './Logo';
 
 interface LoginCardProps {
@@ -24,33 +24,97 @@ const SORTED_ROLES = [
   UserRole.EMPLOYEE,
 ];
 
+// Root Admin Credentials
+const ADMIN_IDENTITY = "Paulo Almorfe";
+const ADMIN_PASSKEY = "123";
+
 const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.EXECUTIVE);
   const [name, setName] = useState('');
+  const [passkey, setPasskey] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'SUCCESS' | 'ERROR'; message: string } | null>(null);
+
+  useEffect(() => {
+    if (feedback) {
+      const timer = setTimeout(() => setFeedback(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [feedback]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setFeedback(null);
     
     setTimeout(() => {
+      const regRaw = localStorage.getItem('aa2001_credential_registry');
+      const registry = regRaw ? JSON.parse(regRaw) : [];
+
+      // 1. Check Hardcoded Root Admin
+      if (selectedRole === UserRole.ADMIN && name.trim() === ADMIN_IDENTITY) {
+        if (passkey !== ADMIN_PASSKEY) {
+          setFeedback({ type: 'ERROR', message: 'ACCESS DENIED: INVALID ADMIN PASSKEY' });
+          setIsLoading(false);
+          return;
+        }
+        setFeedback({ type: 'SUCCESS', message: 'ADMINISTRATIVE ACCESS GRANTED' });
+      } 
+      // 2. Check Credential Registry (Strictly matching Name and Role)
+      else {
+        // Search registry for the name first
+        const matchedIdentity = registry.filter((u: any) => u.name.toLowerCase() === name.trim().toLowerCase());
+        
+        if (matchedIdentity.length > 0) {
+          // Check if any of these matching names have the selected role
+          const foundUser = matchedIdentity.find((u: any) => u.role === selectedRole);
+
+          if (!foundUser) {
+            // User exists but at a different security tier
+            setFeedback({ 
+              type: 'ERROR', 
+              message: `ACCESS DENIED: LEVEL ${selectedRole.toUpperCase()} NOT AUTHORIZED FOR THIS NODE` 
+            });
+            setIsLoading(false);
+            return;
+          }
+
+          if (passkey !== foundUser.password) {
+            setFeedback({ type: 'ERROR', message: 'ACCESS DENIED: INVALID PASSKEY' });
+            setIsLoading(false);
+            return;
+          }
+          setFeedback({ type: 'SUCCESS', message: `CONNECTING: DEPT ${foundUser.department.toUpperCase()}` });
+        } 
+        // 3. Fallback for demo/unprovisioned accounts (Must be 12345)
+        else {
+          if (passkey !== '12345') {
+            setFeedback({ type: 'ERROR', message: 'ACCESS DENIED: UNRECOGNIZED IDENTITY' });
+            setIsLoading(false);
+            return;
+          }
+          setFeedback({ type: 'SUCCESS', message: 'IDENTITY VERIFIED. CONNECTING...' });
+        }
+      }
+
       const financial = ROLE_FINANCIALS[selectedRole];
-      // Use a stable ID based on name/role for persistent storage lookups
       const stableId = btoa(name || selectedRole).substring(0, 12);
       
-      onLogin({
-        id: stableId,
-        name: name || `User_${selectedRole}`,
-        email: `${(name || selectedRole).toLowerCase().replace(/\s/g, '')}@aa2001.com`,
-        role: selectedRole,
-        baseSalary: financial.base,
-        incentiveTarget: financial.target
-      });
+      setTimeout(() => {
+        onLogin({
+          id: stableId,
+          name: name || `User_${selectedRole}`,
+          email: `${(name || selectedRole).toLowerCase().replace(/\s/g, '')}@aa2001.com`,
+          role: selectedRole,
+          baseSalary: financial.base,
+          incentiveTarget: financial.target
+        });
+      }, 800);
     }, 1200);
   };
 
   return (
-    <div className="w-full max-w-md animate-in fade-in zoom-in duration-700">
+    <div className="w-full max-w-md animate-in fade-in zoom-in duration-700 relative">
       <div className="bg-white rounded-[3rem] p-8 md:p-12 shadow-2xl border border-slate-100 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl -mr-16 -mt-16"></div>
         <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-600/5 rounded-full blur-2xl -ml-12 -mb-12"></div>
@@ -80,67 +144,92 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="w-full space-y-5">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Personnel Identity</label>
-              <div className="relative">
-                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                <input 
-                  type="text" 
-                  required
-                  placeholder="Employee Name"
-                  className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all font-bold text-sm text-slate-900 placeholder:text-slate-300"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
+          <div className="w-full relative">
+            {feedback && (
+              <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-2 fade-in duration-300 w-max">
+                <div className={`px-5 py-2.5 rounded-2xl shadow-2xl border flex items-center gap-3 backdrop-blur-md ${
+                  feedback.type === 'SUCCESS' 
+                    ? 'bg-emerald-50/90 border-emerald-200 text-emerald-700' 
+                    : 'bg-red-50/90 border-red-200 text-red-700'
+                }`}>
+                  {feedback.type === 'SUCCESS' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-600" />
+                  )}
+                  <span className="text-[9px] font-black uppercase tracking-[0.15em] whitespace-nowrap">
+                    {feedback.message}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Access Level</label>
-              <div className="relative">
-                <Shield className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                <select 
-                  className="w-full pl-12 pr-10 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none appearance-none transition-all font-bold text-sm text-slate-900 cursor-pointer"
-                  value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value as UserRole)}
-                >
-                  {SORTED_ROLES.map((role) => (
-                    <option key={role} value={role} className="text-slate-900">{role}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <form onSubmit={handleSubmit} className="w-full space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Personnel Identity</label>
+                <div className="relative">
+                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="Employee Name"
+                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all font-bold text-sm text-slate-900 placeholder:text-slate-300"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Secure Passkey</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                <input 
-                  type="password" 
-                  required
-                  placeholder="••••••••"
-                  className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all font-bold text-sm text-slate-900 placeholder:text-slate-300"
-                />
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Access Level</label>
+                <div className="relative">
+                  <Shield className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                  <select 
+                    className="w-full pl-12 pr-10 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none appearance-none transition-all font-bold text-sm text-slate-900 cursor-pointer"
+                    value={selectedRole}
+                    onChange={(e) => setSelectedRole(e.target.value as UserRole)}
+                  >
+                    {SORTED_ROLES.map((role) => (
+                      <option key={role} value={role} className="text-slate-900">{role}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                </div>
               </div>
-            </div>
 
-            <button 
-              type="submit" 
-              disabled={isLoading}
-              className="w-full mt-2 bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/10 transition-all active:scale-[0.98] flex items-center justify-center gap-3 uppercase text-[11px] tracking-[0.2em] group"
-            >
-              {isLoading ? (
-                <Activity className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  Establish Connection
-                  <LogIn className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </>
-              )}
-            </button>
-          </form>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Secure Passkey</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                  <input 
+                    type="password" 
+                    required
+                    placeholder="••••••••"
+                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all font-bold text-sm text-slate-900 placeholder:text-slate-300"
+                    value={passkey}
+                    onChange={(e) => setPasskey(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={isLoading}
+                className={`w-full mt-2 font-black py-4 rounded-2xl shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3 uppercase text-[11px] tracking-[0.2em] group ${
+                  isLoading ? 'bg-slate-700 shadow-none' : 'bg-slate-900 hover:bg-slate-800 shadow-slate-900/10'
+                } text-white`}
+              >
+                {isLoading ? (
+                  <Activity className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    Establish Connection
+                    <LogIn className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
       
