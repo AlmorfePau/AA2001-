@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { User, UserRole, Transmission, SystemStats } from '../types';
+import { User, UserRole, Transmission, SystemStats, AuditEntry } from '../types';
 import EmployeeDashboard from '../dashboards/EmployeeDashboard';
 import SupervisorDashboard from '../dashboards/SupervisorDashboard';
 import DeptHeadDashboard from '../dashboards/DeptHeadDashboard';
@@ -11,14 +11,16 @@ interface DashboardProps {
   user: User;
   pendingTransmissions: Transmission[];
   validatedStats: Record<string, SystemStats>;
+  auditLogs: AuditEntry[];
   onTransmit: (t: Transmission) => void;
-  onValidate: (id: string) => void;
+  onValidate: (id: string, overrides?: SystemStats) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
   user, 
   pendingTransmissions, 
   validatedStats, 
+  auditLogs,
   onTransmit, 
   onValidate 
 }) => {
@@ -40,9 +42,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       );
     case UserRole.DEPT_HEAD:
-      return <DeptHeadDashboard user={user} />;
+      return <DeptHeadDashboard user={user} validatedStats={validatedStats} />;
     case UserRole.ADMIN:
-      return <AdminDashboard user={user} />;
+      return <AdminDashboard user={user} auditLogs={auditLogs} />;
     case UserRole.EXECUTIVE:
       return <ExecutiveDashboard user={user} />;
     default:

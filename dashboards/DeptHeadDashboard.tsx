@@ -1,25 +1,51 @@
 
-import React from 'react';
-import { User } from '../types';
+import React, { useMemo } from 'react';
+import { User, SystemStats } from '../types';
 import { 
   BarChart3, 
   Target, 
   Shield, 
   Scale,
   CircleDollarSign,
-  PieChart,
-  Activity,
-  Zap
+  PieChart
 } from 'lucide-react';
 
 interface Props {
   user: User;
+  validatedStats?: Record<string, SystemStats>;
 }
 
-const DeptHeadDashboard: React.FC<Props> = ({ user }) => {
+const DeptHeadDashboard: React.FC<Props> = ({ user, validatedStats = {} }) => {
+  // Calculate aggregate metrics from validated data
+  const aggregateMetrics = useMemo(() => {
+    const statsArray = Object.values(validatedStats);
+    if (statsArray.length === 0) {
+      return { efficiency: "99.8", variance: "99.8", delivery: "99.8", count: 0 };
+    }
+
+    const avgAccuracy = statsArray.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / statsArray.length;
+    const avgUptime = statsArray.reduce((acc, s) => acc + parseFloat(s.uptime), 0) / statsArray.length;
+    const avgResp = statsArray.reduce((acc, s) => acc + parseFloat(s.responseTime), 0) / statsArray.length;
+
+    return {
+      efficiency: (avgAccuracy * (avgUptime / 100)).toFixed(1),
+      variance: (100 - (avgResp / 500) * 100).toFixed(1), // Normalized variance
+      delivery: avgUptime.toFixed(1),
+      count: statsArray.length
+    };
+  }, [validatedStats]);
+
+  // Map validated stats to the productivity chart
+  const productivityBars = useMemo(() => {
+    const statsArray = Object.values(validatedStats).slice(0, 5);
+    const bars = statsArray.map(s => (parseFloat(s.accuracy) * parseFloat(s.uptime)) / 100);
+    // Fill with mocks if data is low
+    while (bars.length < 5) bars.push(40 + Math.random() * 40);
+    return bars;
+  }, [validatedStats]);
+
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-12 animate-in fade-in duration-700">
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -55,10 +81,7 @@ const DeptHeadDashboard: React.FC<Props> = ({ user }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Main Content Area */}
         <div className="lg:col-span-8 space-y-8">
-          
-          {/* Validated Objectives Section */}
           <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
             <div className="flex items-center gap-4 mb-12">
               <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
@@ -72,9 +95,9 @@ const DeptHeadDashboard: React.FC<Props> = ({ user }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
               {[
-                { label: "OPERATIONAL EFFICIENCY", value: "99.8", unit: "%" },
-                { label: "BUDGET VARIANCE", value: "99.8", unit: "%" },
-                { label: "MILESTONE DELIVERY", value: "99.8", unit: "%" }
+                { label: "OPERATIONAL EFFICIENCY", value: aggregateMetrics.efficiency, unit: "%" },
+                { label: "BUDGET VARIANCE", value: aggregateMetrics.variance, unit: "%" },
+                { label: "MILESTONE DELIVERY", value: aggregateMetrics.delivery, unit: "%" }
               ].map((metric, i) => (
                 <div key={i} className="space-y-4">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{metric.label}</p>
@@ -83,14 +106,13 @@ const DeptHeadDashboard: React.FC<Props> = ({ user }) => {
                     <span className="text-xs font-bold text-slate-400 uppercase">{metric.unit}</span>
                   </div>
                   <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-600 rounded-full" style={{ width: `${parseFloat(metric.value)}%` }}></div>
+                    <div className="h-full bg-blue-600 rounded-full transition-all duration-1000" style={{ width: `${Math.max(0, Math.min(100, parseFloat(metric.value)))}%` }}></div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Departmental Analytics Section */}
           <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
             <div className="flex items-center gap-4 mb-12">
               <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
@@ -103,37 +125,24 @@ const DeptHeadDashboard: React.FC<Props> = ({ user }) => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-              {/* Unit Productivity Variance (Bar Chart Visualization) */}
               <div className="bg-slate-50/50 p-8 rounded-[2rem] border border-slate-100">
                 <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-10">UNIT PRODUCTIVITY VARIANCE</p>
                 <div className="flex items-end justify-between h-40 gap-3">
-                  {[40, 65, 50, 85, 60].map((h, i) => (
-                    <div key={i} className="flex-1 bg-blue-600 rounded-lg" style={{ height: `${h}%` }}></div>
+                  {productivityBars.map((h, i) => (
+                    <div key={i} className="flex-1 bg-blue-600 rounded-lg transition-all duration-1000" style={{ height: `${h}%` }}></div>
                   ))}
                 </div>
               </div>
 
-              {/* Budget Utilization (Progress Bars) */}
               <div className="bg-slate-50/50 p-8 rounded-[2rem] border border-slate-100 space-y-10">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">BUDGET UTILIZATION</p>
-                
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <p className="text-[10px] font-black text-slate-700 uppercase">OPS-A</p>
-                    <p className="text-[10px] font-black text-blue-600">82%</p>
+                    <p className="text-[10px] font-black text-slate-700 uppercase">ACTIVE VALIDATIONS</p>
+                    <p className="text-[10px] font-black text-blue-600">{aggregateMetrics.count}</p>
                   </div>
                   <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-600 rounded-full" style={{ width: '82%' }}></div>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <p className="text-[10px] font-black text-slate-700 uppercase">OPS-B</p>
-                    <p className="text-[10px] font-black text-[#10b981]">45%</p>
-                  </div>
-                  <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#10b981] rounded-full" style={{ width: '45%' }}></div>
+                    <div className="h-full bg-blue-600 rounded-full" style={{ width: `${Math.min(aggregateMetrics.count * 10, 100)}%` }}></div>
                   </div>
                 </div>
               </div>
@@ -141,13 +150,9 @@ const DeptHeadDashboard: React.FC<Props> = ({ user }) => {
           </div>
         </div>
 
-        {/* Sidebar area */}
         <div className="lg:col-span-4 space-y-8">
-          
-          {/* P3 Realization Card */}
           <div className="bg-[#0b1222] rounded-[3rem] p-10 shadow-2xl text-white relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-48 h-48 bg-blue-600/10 blur-[100px] rounded-full -mr-24 -mt-24"></div>
-            
             <div className="flex items-center gap-4 mb-16">
               <div className="w-11 h-11 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-900/40">
                 <CircleDollarSign className="w-5 h-5 text-white" />
@@ -157,7 +162,6 @@ const DeptHeadDashboard: React.FC<Props> = ({ user }) => {
                 <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">VALIDATED PAYOUT</p>
               </div>
             </div>
-
             <div className="space-y-16">
               <div>
                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">VALIDATED MULTIPLIER</p>
@@ -166,7 +170,6 @@ const DeptHeadDashboard: React.FC<Props> = ({ user }) => {
                   <span className="text-blue-500 text-2xl font-black italic">x</span>
                 </div>
               </div>
-
               <div className="space-y-5">
                 <div className="flex justify-between items-end">
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">PROJECTED YIELD</p>
@@ -179,7 +182,6 @@ const DeptHeadDashboard: React.FC<Props> = ({ user }) => {
             </div>
           </div>
 
-          {/* System Security section */}
           <div className="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-100">
             <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-8">SYSTEM SECURITY</p>
             <div className="flex items-center gap-5 p-6 bg-slate-50/50 rounded-[2rem] border border-slate-100">
@@ -192,7 +194,6 @@ const DeptHeadDashboard: React.FC<Props> = ({ user }) => {
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </div>

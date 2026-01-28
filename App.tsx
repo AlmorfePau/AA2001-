@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { User, UserRole, Transmission, SystemStats } from './types';
+import { User, UserRole, Transmission, SystemStats, AuditEntry, SystemNotification } from './types';
 import LoginCard from './components/LoginCard';
 import Dashboard from './components/Dashboard';
 import Navbar from './components/Navbar';
@@ -9,7 +9,6 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
-  // Centralized state for the transmission/validation flow with LocalStorage initialization
   const [pendingTransmissions, setPendingTransmissions] = useState<Transmission[]>(() => {
     const saved = localStorage.getItem('aa2001_pending_transmissions');
     return saved ? JSON.parse(saved) : [];
@@ -20,7 +19,36 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : {};
   });
 
-  // Persist state changes to LocalStorage
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>(() => {
+    const saved = localStorage.getItem('aa2001_audit_logs');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [notifications, setNotifications] = useState<SystemNotification[]>(() => {
+    const saved = localStorage.getItem('aa2001_notifications');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Storage event listener for multi-tab synchronization
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'aa2001_pending_transmissions') {
+        setPendingTransmissions(e.newValue ? JSON.parse(e.newValue) : []);
+      }
+      if (e.key === 'aa2001_validated_stats') {
+        setValidatedStats(e.newValue ? JSON.parse(e.newValue) : {});
+      }
+      if (e.key === 'aa2001_audit_logs') {
+        setAuditLogs(e.newValue ? JSON.parse(e.newValue) : []);
+      }
+      if (e.key === 'aa2001_notifications') {
+        setNotifications(e.newValue ? JSON.parse(e.newValue) : []);
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('aa2001_pending_transmissions', JSON.stringify(pendingTransmissions));
   }, [pendingTransmissions]);
@@ -29,45 +57,111 @@ const App: React.FC = () => {
     localStorage.setItem('aa2001_validated_stats', JSON.stringify(validatedStats));
   }, [validatedStats]);
 
+  useEffect(() => {
+    localStorage.setItem('aa2001_audit_logs', JSON.stringify(auditLogs));
+  }, [auditLogs]);
+
+  useEffect(() => {
+    localStorage.setItem('aa2001_notifications', JSON.stringify(notifications));
+  }, [notifications]);
+
+  const addNotification = useCallback((message: string, targetUserId: string, type: 'INFO' | 'SUCCESS' | 'ALERT' = 'INFO') => {
+    const newNotif: SystemNotification = {
+      id: Math.random().toString(36).substr(2, 9).toUpperCase(),
+      targetUserId,
+      message,
+      timestamp: new Date().toISOString(),
+      type
+    };
+    setNotifications(prev => [newNotif, ...prev].slice(0, 100)); // Increased limit to accommodate multiple users
+  }, []);
+
+  const deleteNotification = useCallback((id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
+  const addAuditEntry = useCallback((action: string, details: string, type: 'INFO' | 'OK' | 'WARN' = 'INFO', userName?: string) => {
+    const entry: AuditEntry = {
+      id: Math.random().toString(36).substr(2, 8).toUpperCase(),
+      timestamp: new Date().toISOString(),
+      user: userName || user?.name || 'SYSTEM',
+      action,
+      details,
+      type
+    };
+    setAuditLogs(prev => [entry, ...prev].slice(0, 100));
+  }, [user]);
+
   const handleLogin = useCallback((loggedInUser: User) => {
     setUser(loggedInUser);
     setIsAuthenticated(true);
-  }, []);
+    addNotification(`Welcome back, ${loggedInUser.name}. Session established.`, loggedInUser.id, 'SUCCESS');
+    const entry: AuditEntry = {
+      id: Math.random().toString(36).substr(2, 8).toUpperCase(),
+      timestamp: new Date().toISOString(),
+      user: loggedInUser.name,
+      action: 'SESSION_INIT',
+      details: `Authorized login with role: ${loggedInUser.role}`,
+      type: 'OK'
+    };
+    setAuditLogs(prev => [entry, ...prev].slice(0, 100));
+  }, [addNotification]);
 
   const handleLogout = useCallback(() => {
+    addAuditEntry('SESSION_TERM', 'User terminated secure connection', 'INFO');
     setUser(null);
     setIsAuthenticated(false);
-  }, []);
+  }, [addAuditEntry]);
 
   const handleTransmit = useCallback((transmission: Transmission) => {
+    if (!user) return;
     setPendingTransmissions(prev => [...prev, transmission]);
-  }, []);
+    // Notify the transmitting employee
+    addNotification(`Transmission ${transmission.id} has been broadcast to the network.`, user.id, 'INFO');
+    addAuditEntry('DATA_TRANSMIT', `Node update ${transmission.id} submitted for review`, 'INFO', transmission.userName);
+  }, [user, addAuditEntry, addNotification]);
 
-  const handleValidate = useCallback((transmissionId: string) => {
+  const handleValidate = useCallback((transmissionId: string, overrides?: SystemStats) => {
     const transmission = pendingTransmissions.find(t => t.id === transmissionId);
-    if (transmission) {
+    if (transmission && user) {
+      const statsToUse = overrides || {
+        responseTime: transmission.responseTime,
+        accuracy: transmission.accuracy,
+        uptime: transmission.uptime
+      };
+
       setValidatedStats(prev => ({
         ...prev,
-        [transmission.userId]: {
-          responseTime: transmission.responseTime,
-          accuracy: transmission.accuracy,
-          uptime: transmission.uptime
-        }
+        [transmission.userId]: statsToUse
       }));
       setPendingTransmissions(prev => prev.filter(t => t.id !== transmissionId));
+      
+      // Notify the supervisor (current user)
+      addNotification(`Transmission ${transmissionId} successfully validated${overrides ? ' with manual override' : ''}.`, user.id, 'SUCCESS');
+      
+      // Notify the employee who sent it
+      addNotification(`Your performance log ${transmissionId} has been verified by ${user.name}.`, transmission.userId, 'SUCCESS');
+      
+      addAuditEntry('VERIFY_SUCCESS', `Supervisor validated Transmission ${transmissionId}${overrides ? ' (Override applied)' : ''}`, 'OK');
     }
-  }, [pendingTransmissions]);
+  }, [pendingTransmissions, user, addAuditEntry, addNotification]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {isAuthenticated && user ? (
         <>
-          <Navbar user={user} onLogout={handleLogout} />
+          <Navbar 
+            user={user} 
+            onLogout={handleLogout} 
+            notifications={notifications}
+            onDeleteNotification={deleteNotification}
+          />
           <main className="flex-grow p-4 md:p-8 animate-in fade-in duration-500">
             <Dashboard 
               user={user} 
               pendingTransmissions={pendingTransmissions}
               validatedStats={validatedStats}
+              auditLogs={auditLogs}
               onTransmit={handleTransmit}
               onValidate={handleValidate}
             />

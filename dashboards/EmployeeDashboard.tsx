@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { User, Transmission, SystemStats } from '../types';
 import { 
   BarChart3, 
@@ -35,20 +35,17 @@ const EmployeeDashboard: React.FC<Props> = ({ user, validatedStats, onTransmit }
   const [isTransmitting, setIsTransmitting] = useState(false);
   const [showNotification, setShowNotification] = useState(false);
   
-  // Matrix inputs remain empty as requested for security/UX
   const [matrixInputs, setMatrixInputs] = useState({
     responseTime: '',
     accuracy: '',
     uptime: ''
   });
 
-  // Load local transmission history from localStorage
   const [transmissionHistory, setTransmissionHistory] = useState<TransmissionRecord[]>(() => {
     const saved = localStorage.getItem(`aa2001_history_${user.id}`);
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Persist local history changes
   useEffect(() => {
     localStorage.setItem(`aa2001_history_${user.id}`, JSON.stringify(transmissionHistory));
   }, [transmissionHistory, user.id]);
@@ -77,17 +74,14 @@ const EmployeeDashboard: React.FC<Props> = ({ user, validatedStats, onTransmit }
         uptime: matrixInputs.uptime,
       };
 
-      // Update history
       setTransmissionHistory(prev => [newRecord, ...prev].slice(0, 5));
       
-      // Notify supervisor
       onTransmit({
         ...newRecord,
         userId: user.id,
         userName: user.name
       });
 
-      // Clear inputs after transmission to satisfy "keep empty" requirement
       setMatrixInputs({
         responseTime: '',
         accuracy: '',
@@ -106,16 +100,29 @@ const EmployeeDashboard: React.FC<Props> = ({ user, validatedStats, onTransmit }
     }
   }, [showNotification]);
 
-  const metrics = [
-    { label: "AVG RESPONSE TIME", value: validatedStats?.responseTime || '0', unit: "MS", percent: validatedStats ? Math.min((300 / parseFloat(validatedStats.responseTime)) * 100, 100) : 0 },
+  // Derived metrics from validated data
+  const metrics = useMemo(() => [
+    { label: "AVG RESPONSE TIME", value: validatedStats?.responseTime || '0', unit: "MS", percent: validatedStats ? Math.max(0, Math.min((300 / parseFloat(validatedStats.responseTime)) * 100, 100)) : 0 },
     { label: "LOG ACCURACY", value: validatedStats?.accuracy || '0', unit: "%", percent: validatedStats ? parseFloat(validatedStats.accuracy) : 0 },
     { label: "NODE UPTIME", value: validatedStats?.uptime || '0', unit: "%", percent: validatedStats ? parseFloat(validatedStats.uptime) : 0 }
-  ];
+  ], [validatedStats]);
+
+  // Calculate real yield based on validated stats
+  const realization = useMemo(() => {
+    if (!validatedStats) return { multiplier: '0.00', yield: '0.00', progress: '0%' };
+    
+    const acc = parseFloat(validatedStats.accuracy) / 100;
+    const upt = parseFloat(validatedStats.uptime) / 100;
+    const mult = (acc * upt).toFixed(2);
+    const projected = (user.incentiveTarget * parseFloat(mult)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+    const progress = (parseFloat(mult) * 100).toFixed(1) + '%';
+    
+    return { multiplier: mult, yield: projected, progress };
+  }, [validatedStats, user.incentiveTarget]);
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-12 animate-in fade-in duration-700 relative">
       
-      {/* Success Notification Toast */}
       {showNotification && (
         <div className="fixed top-24 right-8 z-[100] animate-in slide-in-from-right-full fade-in duration-500">
           <div className="bg-[#0b1222] text-white px-6 py-4 rounded-[1.5rem] shadow-2xl border border-blue-500/30 flex items-center gap-4">
@@ -130,7 +137,6 @@ const EmployeeDashboard: React.FC<Props> = ({ user, validatedStats, onTransmit }
         </div>
       )}
 
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -168,7 +174,6 @@ const EmployeeDashboard: React.FC<Props> = ({ user, validatedStats, onTransmit }
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 space-y-8">
           
-          {/* Validated Objectives Section */}
           <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
             <div className="flex items-center gap-4 mb-10">
               <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
@@ -196,7 +201,6 @@ const EmployeeDashboard: React.FC<Props> = ({ user, validatedStats, onTransmit }
             </div>
           </div>
 
-          {/* Data Transmission Matrix Section */}
           <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-4">
@@ -320,7 +324,6 @@ const EmployeeDashboard: React.FC<Props> = ({ user, validatedStats, onTransmit }
           </div>
         </div>
 
-        {/* Sidebar Content */}
         <div className="lg:col-span-4 space-y-8">
           <div className="bg-[#0b1222] rounded-[3rem] p-10 shadow-2xl text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-48 h-48 bg-blue-600/10 blur-[100px] rounded-full -mr-24 -mt-24"></div>
@@ -337,17 +340,17 @@ const EmployeeDashboard: React.FC<Props> = ({ user, validatedStats, onTransmit }
               <div>
                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">VALIDATED MULTIPLIER</p>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-6xl font-black tracking-tighter">{validatedStats ? '1.00' : '0.00'}</span>
+                  <span className="text-6xl font-black tracking-tighter">{realization.multiplier}</span>
                   <span className="text-blue-500 text-2xl font-black italic">x</span>
                 </div>
               </div>
               <div className="space-y-5">
                 <div className="flex justify-between items-end">
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">PROJECTED YIELD</p>
-                  <p className="text-3xl font-black text-emerald-400 tracking-tight">${validatedStats ? '11,978.029' : '0.00'}</p>
+                  <p className="text-3xl font-black text-emerald-400 tracking-tight">${realization.yield}</p>
                 </div>
                 <div className="h-1.5 bg-slate-800/50 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-600 rounded-full shadow-[0_0_12px_rgba(37,99,235,0.5)] transition-all duration-1000" style={{ width: validatedStats ? '99.8%' : '0%' }}></div>
+                  <div className="h-full bg-blue-600 rounded-full shadow-[0_0_12px_rgba(37,99,235,0.5)] transition-all duration-1000" style={{ width: realization.progress }}></div>
                 </div>
               </div>
             </div>

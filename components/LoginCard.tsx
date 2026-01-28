@@ -16,7 +16,6 @@ const ROLE_FINANCIALS: Record<UserRole, { base: number; target: number }> = {
   [UserRole.EXECUTIVE]: { base: 275000, target: 125000 },
 };
 
-// Hierarchical sorting: Highest to Lowest
 const SORTED_ROLES = [
   UserRole.EXECUTIVE,
   UserRole.ADMIN,
@@ -34,11 +33,13 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true);
     
-    // Simulate secure authentication
     setTimeout(() => {
       const financial = ROLE_FINANCIALS[selectedRole];
+      // Use a stable ID based on name/role for persistent storage lookups
+      const stableId = btoa(name || selectedRole).substring(0, 12);
+      
       onLogin({
-        id: Math.random().toString(36).substr(2, 9),
+        id: stableId,
         name: name || `User_${selectedRole}`,
         email: `${(name || selectedRole).toLowerCase().replace(/\s/g, '')}@aa2001.com`,
         role: selectedRole,
@@ -51,14 +52,12 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
   return (
     <div className="w-full max-w-md animate-in fade-in zoom-in duration-700">
       <div className="bg-white rounded-[3rem] p-8 md:p-12 shadow-2xl border border-slate-100 relative overflow-hidden">
-        {/* Aesthetic Accents */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl -mr-16 -mt-16"></div>
         <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-600/5 rounded-full blur-2xl -ml-12 -mb-12"></div>
 
         <div className="relative z-10 flex flex-col items-center">
           <Logo size="md" className="mb-6" />
           
-          {/* Professional KPI Console Header */}
           <div className="text-center mb-10 w-full">
             <div className="flex items-center justify-center gap-2 mb-1">
               <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">
@@ -82,7 +81,6 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
           </div>
 
           <form onSubmit={handleSubmit} className="w-full space-y-5">
-            {/* Identity Input */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Personnel Identity</label>
               <div className="relative">
@@ -98,7 +96,6 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
               </div>
             </div>
 
-            {/* Position Selector - Sorted Highest to Lowest */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Access Level</label>
               <div className="relative">
@@ -116,7 +113,6 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
               </div>
             </div>
 
-            {/* Credential Input */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Secure Passkey</label>
               <div className="relative">
