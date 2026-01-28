@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { LogIn, Shield, User as UserIcon, Lock, ChevronDown, Activity, Cpu } from 'lucide-react';
@@ -122,9 +123,9 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                 <input 
                   type="password" 
+                  required
                   placeholder="••••••••"
                   className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all font-bold text-sm text-slate-900 placeholder:text-slate-300"
-                  defaultValue="123456"
                 />
               </div>
             </div>

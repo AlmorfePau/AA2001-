@@ -10,8 +10,12 @@ interface NavbarProps {
 }
 
 const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
-  // Only reveal advanced tools to Department Head, Admin, and Executive
-  const hideControls = user.role === UserRole.EMPLOYEE || user.role === UserRole.SUPERVISOR;
+  // Hide advanced controls for Employee, Supervisor, Admin, and Department Head as requested
+  const hideControls = 
+    user.role === UserRole.EMPLOYEE || 
+    user.role === UserRole.SUPERVISOR || 
+    user.role === UserRole.ADMIN ||
+    user.role === UserRole.DEPT_HEAD;
 
   return (
     <nav className="bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-50">
