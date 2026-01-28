@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { User } from '../types';
+import { User, Transmission } from '../types';
 import { 
   BarChart3, 
   Users, 
@@ -12,14 +12,24 @@ import {
   Shield, 
   Scale,
   CircleDollarSign,
-  Info
+  Info,
+  CheckCircle2
 } from 'lucide-react';
 
 interface Props {
   user: User;
+  pendingTransmissions: Transmission[];
+  onValidate: (id: string) => void;
 }
 
-const SupervisorDashboard: React.FC<Props> = ({ user }) => {
+const SupervisorDashboard: React.FC<Props> = ({ user, pendingTransmissions, onValidate }) => {
+  // Combine real pending data with static mocks to maintain UI aesthetic
+  // Added 'active' property to align with Transmission object shape and avoid TS errors
+  const staticMocks = [
+    { name: "S. Rogers", role: "SPECIALIST", score: "94%", stats: { RESP: 290, ACC: 98.5, UPTIME: 99.9 }, status: "VALIDATED", color: "text-emerald-500 bg-emerald-50", active: false },
+    { name: "T. Stark", role: "LEAD DEV", score: "100%", stats: { RESP: 250, ACC: 100, UPTIME: 100 }, status: "VALIDATED", color: "text-emerald-500 bg-emerald-50", active: false }
+  ];
+
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-12 animate-in fade-in duration-700">
       {/* Header Section */}
@@ -112,17 +122,28 @@ const SupervisorDashboard: React.FC<Props> = ({ user }) => {
             </div>
 
             <div className="space-y-4">
+              {/* Combine Real Data with Static UI elements */}
               {[
-                { name: "S. Rogers", role: "SPECIALIST", score: "94%", stats: { RESP: 290, ACC: 98.5, UPTIME: 99.9 }, status: "VALIDATED", color: "text-emerald-500 bg-emerald-50" },
-                { name: "N. Romanoff", role: "SENIOR SPECIALIST", score: "82%", stats: { RESP: 335, ACC: 92.1, UPTIME: 98.5 }, status: "PENDING", color: "text-amber-500 bg-amber-50", active: true },
-                { name: "T. Stark", role: "LEAD DEV", score: "100%", stats: { RESP: 250, ACC: 100, UPTIME: 100 }, status: "VALIDATED", color: "text-emerald-500 bg-emerald-50" }
+                ...pendingTransmissions.map(t => ({
+                  id: t.id,
+                  name: t.userName,
+                  role: "PERSONNEL",
+                  score: "PENDING",
+                  stats: { RESP: t.responseTime, ACC: t.accuracy, UPTIME: t.uptime },
+                  status: "PENDING",
+                  color: "text-amber-500 bg-amber-50",
+                  active: true,
+                  real: true
+                })),
+                ...staticMocks.map(m => ({ ...m, real: false, id: Math.random().toString() }))
               ].map((person, i) => (
-                <div key={i} className="flex items-center justify-between p-5 bg-slate-50/40 rounded-[2rem] hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100 group">
+                <div key={person.id} className={`flex items-center justify-between p-5 bg-slate-50/40 rounded-[2rem] hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100 group ${person.real ? 'ring-2 ring-blue-500/10' : ''}`}>
                   <div className="flex items-center gap-6">
                     <div className="w-14 h-14 rounded-3xl bg-white border border-slate-100 flex items-center justify-center text-xs font-black text-blue-600 shadow-sm uppercase">
                       <span className="text-[#34d399]">{person.name.split(' ').map(n => n[0]).join('')}</span>
                     </div>
                     <div>
+                      {/* person.active now guaranteed to exist on both real and mock data types */}
                       <p className="text-xs font-black text-[#1e293b]">{person.name} {person.active && <span className="w-2 h-2 bg-amber-400 rounded-full inline-block ml-1"></span>}</p>
                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-loose">{person.role} • SCORE: {person.score}</p>
                     </div>
@@ -140,9 +161,19 @@ const SupervisorDashboard: React.FC<Props> = ({ user }) => {
                     <span className={`px-5 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${person.color}`}>
                       {person.status}
                     </span>
-                    <button className={`p-2.5 rounded-2xl transition-all ${person.active ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-200 hover:text-blue-600'}`}>
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
+                    {person.real ? (
+                       <button 
+                        onClick={() => onValidate(person.id!)}
+                        className="p-2.5 rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-200 hover:scale-110 transition-all flex items-center gap-2 group/btn"
+                       >
+                         <CheckCircle2 className="w-4 h-4" />
+                         <span className="text-[8px] font-black uppercase tracking-widest hidden group-hover/btn:block">VALIDATE</span>
+                       </button>
+                    ) : (
+                      <button className={`p-2.5 rounded-2xl transition-all ${person.active ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-200 hover:text-blue-600'}`}>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
