@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { User, Transmission, SystemStats, Announcement } from '../types';
 import { 
   Activity,
@@ -21,7 +21,8 @@ import {
   Wrench,
   Upload,
   Search,
-  Shield
+  Shield,
+  ChevronDown
 } from 'lucide-react';
 
 interface Props {
@@ -35,6 +36,8 @@ const EmployeeDashboard: React.FC<Props> = ({ user, validatedStats, announcement
   const [activeStep, setActiveStep] = useState(1);
   const [isTransmitting, setIsTransmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [isDirectivesCollapsed, setIsDirectivesCollapsed] = useState(false);
+  const [hasSeenNews, setHasSeenNews] = useState(false);
 
   // Factual Form State (Strictly objective data points)
   const [formData, setFormData] = useState({
@@ -62,6 +65,27 @@ const EmployeeDashboard: React.FC<Props> = ({ user, validatedStats, announcement
       riskAssessmentDone: true
     }
   });
+
+  // Check for "new" news (within the last 24 hours)
+  const hasNewNews = useMemo(() => {
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    return announcements.some(a => new Date(a.timestamp).getTime() > oneDayAgo);
+  }, [announcements]);
+
+  // Identify the latest announcement ID to reset the "seen" status if a new one arrives
+  const latestAnnouncementId = useMemo(() => {
+    return announcements.length > 0 ? announcements[0].id : null;
+  }, [announcements]);
+
+  // Reset seen status if the actual list of announcements changes (new broadcast received)
+  useEffect(() => {
+    setHasSeenNews(false);
+  }, [latestAnnouncementId]);
+
+  const handleDirectivesToggle = () => {
+    setIsDirectivesCollapsed(!isDirectivesCollapsed);
+    setHasSeenNews(true);
+  };
 
   // 12 Technical KPIs (3Ps) - Read-Only, System-Calculated
   const kpiData = useMemo(() => [
@@ -196,45 +220,76 @@ const EmployeeDashboard: React.FC<Props> = ({ user, validatedStats, announcement
         </div>
       </div>
 
-      {/* Announcements Panel (Unit-specific directives) - MOVED ABOVE TERMINAL & SCORECARD */}
+      {/* Announcements Panel (Unit-specific directives) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-12">
-          <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm">
-            <div className="flex items-center gap-4 mb-10">
-              <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center">
-                <FileText className="w-5 h-5 text-white" />
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+            {/* Header / Toggle Area */}
+            <div 
+              onClick={handleDirectivesToggle}
+              className="flex items-center justify-between p-10 cursor-pointer hover:bg-slate-50/50 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center">
+                    <FileText className="w-5 h-5 text-white" />
+                  </div>
+                  {/* Blinking/Pulsing Blue Indicator for New News - Only if not yet seen */}
+                  {hasNewNews && !hasSeenNews && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-4 w-4 bg-blue-600 border-2 border-white"></span>
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Operational Directives</h3>
+                    {hasNewNews && !hasSeenNews && (
+                      <span className="text-[8px] font-black bg-blue-600 text-white px-2 py-0.5 rounded uppercase tracking-widest animate-pulse">
+                        NEW
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Department Unit News • {announcements.length} Active</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Operational Directives</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Department Unit News</p>
-              </div>
+              <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isDirectivesCollapsed ? '-rotate-90' : 'rotate-0'}`} />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {announcements.length === 0 ? (
-                <div className="col-span-full py-20 text-center space-y-4 opacity-30">
-                  <Info className="w-12 h-12 mx-auto text-slate-300" />
-                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">No active unit directives</p>
+            {/* Collapsible Content */}
+            <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isDirectivesCollapsed ? 'max-h-0' : 'max-h-[2000px] border-t border-slate-50'}`}>
+              <div className="p-10 pt-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-10">
+                  {announcements.length === 0 ? (
+                    <div className="col-span-full py-20 text-center space-y-4 opacity-30">
+                      <Info className="w-12 h-12 mx-auto text-slate-300" />
+                      <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">No active unit directives</p>
+                    </div>
+                  ) : (
+                    announcements.map((a) => {
+                      const isNew = new Date(a.timestamp).getTime() > Date.now() - 24 * 60 * 60 * 1000;
+                      return (
+                        <div key={a.id} className={`p-6 bg-slate-50/50 border rounded-[2rem] space-y-4 group hover:bg-white hover:shadow-md transition-all ${isNew ? 'border-blue-100' : 'border-slate-100'}`}>
+                          <div className="flex items-center justify-between">
+                            <div className={`px-3 py-1 text-[8px] font-black uppercase tracking-widest rounded-md border ${isNew ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                              {isNew ? 'NEW BROADCAST' : 'ISO DIRECTIVE'}
+                            </div>
+                            <p className="text-[8px] font-black text-slate-300 uppercase">{new Date(a.timestamp).toLocaleDateString()}</p>
+                          </div>
+                          <p className="text-xs font-bold text-slate-700 leading-relaxed uppercase tracking-tight">"{a.message}"</p>
+                          <div className="flex items-center gap-3 pt-2 border-t border-slate-100/50">
+                            <div className="w-6 h-6 bg-slate-900 rounded-lg flex items-center justify-center text-[8px] font-black text-white">
+                              {a.senderName.charAt(0)}
+                            </div>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{a.senderName}</p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
-              ) : (
-                announcements.map((a) => (
-                  <div key={a.id} className="p-6 bg-slate-50/50 border border-slate-100 rounded-[2rem] space-y-4 group hover:bg-white hover:shadow-md transition-all">
-                    <div className="flex items-center justify-between">
-                      <div className="px-3 py-1 bg-blue-50 text-blue-600 text-[8px] font-black uppercase tracking-widest rounded-md border border-blue-100">
-                        URGENT
-                      </div>
-                      <p className="text-[8px] font-black text-slate-300 uppercase">{new Date(a.timestamp).toLocaleDateString()}</p>
-                    </div>
-                    <p className="text-xs font-bold text-slate-700 leading-relaxed uppercase tracking-tight">"{a.message}"</p>
-                    <div className="flex items-center gap-3 pt-2 border-t border-slate-100/50">
-                      <div className="w-6 h-6 bg-slate-900 rounded-lg flex items-center justify-center text-[8px] font-black text-white">
-                        {a.senderName.charAt(0)}
-                      </div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{a.senderName}</p>
-                    </div>
-                  </div>
-                ))
-              )}
+              </div>
             </div>
           </div>
         </div>
