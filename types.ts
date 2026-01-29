@@ -31,10 +31,18 @@ export interface AuditEntry {
 
 export interface SystemNotification {
   id: string;
-  targetUserId: string; // The ID of the user who should see this notification
+  targetUserId: string;
   message: string;
   timestamp: string;
   type: 'INFO' | 'SUCCESS' | 'ALERT';
+}
+
+export interface Announcement {
+  id: string;
+  department: string;
+  senderName: string;
+  message: string;
+  timestamp: string;
 }
 
 export interface User {

@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { User, UserRole, Transmission, SystemStats, AuditEntry, SystemNotification } from './types';
+import { User, UserRole, Transmission, SystemStats, AuditEntry, SystemNotification, Announcement } from './types';
 import LoginCard from './components/LoginCard';
 import Dashboard from './components/Dashboard';
 import Navbar from './components/Navbar';
@@ -29,6 +29,11 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [announcements, setAnnouncements] = useState<Announcement[]>(() => {
+    const saved = localStorage.getItem('aa2001_announcements');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Storage event listener for multi-tab synchronization
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
@@ -43,6 +48,9 @@ const App: React.FC = () => {
       }
       if (e.key === 'aa2001_notifications') {
         setNotifications(e.newValue ? JSON.parse(e.newValue) : []);
+      }
+      if (e.key === 'aa2001_announcements') {
+        setAnnouncements(e.newValue ? JSON.parse(e.newValue) : []);
       }
     };
     window.addEventListener('storage', handleStorageChange);
@@ -64,6 +72,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('aa2001_notifications', JSON.stringify(notifications));
   }, [notifications]);
+
+  useEffect(() => {
+    localStorage.setItem('aa2001_announcements', JSON.stringify(announcements));
+  }, [announcements]);
 
   const addNotification = useCallback((message: string, targetUserId: string, type: 'INFO' | 'SUCCESS' | 'ALERT' = 'INFO') => {
     const newNotif: SystemNotification = {
@@ -134,8 +146,25 @@ const App: React.FC = () => {
     }
   }, [pendingTransmissions, user, addAuditEntry, addNotification]);
 
+  const handlePostAnnouncement = useCallback((message: string) => {
+    if (!user || !user.department) return;
+    const newAnnouncement: Announcement = {
+      id: Math.random().toString(36).substr(2, 9).toUpperCase(),
+      department: user.department,
+      senderName: user.name,
+      message,
+      timestamp: new Date().toISOString()
+    };
+    setAnnouncements(prev => [newAnnouncement, ...prev].slice(0, 50));
+    addAuditEntry('DEPT_BROADCAST', `Supervisor posted a group announcement to ${user.department}`, 'OK');
+  }, [user, addAuditEntry]);
+
+  const handleDeleteAnnouncement = useCallback((id: string) => {
+    setAnnouncements(prev => prev.filter(a => a.id !== id));
+    addAuditEntry('DEPT_BROADCAST_RM', `Supervisor manually removed a broadcast announcement`, 'INFO');
+  }, [addAuditEntry]);
+
   const handleDeleteUser = useCallback((userId: string, userName: string) => {
-    // 1. Permanently remove from the global credential registry
     const regRaw = localStorage.getItem('aa2001_credential_registry');
     if (regRaw) {
       const reg = JSON.parse(regRaw);
@@ -143,7 +172,6 @@ const App: React.FC = () => {
       localStorage.setItem('aa2001_credential_registry', JSON.stringify(updatedReg));
     }
 
-    // 2. Clear from administrative department list (aa2001_admin_users) in persistent storage
     const adminUsersRaw = localStorage.getItem('aa2001_admin_users');
     if (adminUsersRaw) {
       try {
@@ -158,7 +186,6 @@ const App: React.FC = () => {
       }
     }
 
-    // 3. Wipe all node-specific metrics and history in current session state
     setPendingTransmissions(prev => prev.filter(t => t.userId !== userId));
     setNotifications(prev => prev.filter(n => n.targetUserId !== userId));
     setValidatedStats(prev => {
@@ -168,8 +195,6 @@ const App: React.FC = () => {
     });
 
     addAuditEntry('ADMIN_PURGE', `Permanently purged all records and access for node: ${userName}`, 'WARN');
-    
-    // Manually trigger a re-render/storage event for other components if needed
     window.dispatchEvent(new Event('storage'));
   }, [addAuditEntry]);
 
@@ -189,8 +214,11 @@ const App: React.FC = () => {
               pendingTransmissions={pendingTransmissions}
               validatedStats={validatedStats}
               auditLogs={auditLogs}
+              announcements={announcements}
               onTransmit={handleTransmit}
               onValidate={handleValidate}
+              onPostAnnouncement={handlePostAnnouncement}
+              onDeleteAnnouncement={handleDeleteAnnouncement}
               onAddAuditEntry={addAuditEntry}
               onDeleteUser={handleDeleteUser}
             />

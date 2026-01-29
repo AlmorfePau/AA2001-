@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { User, UserRole, Transmission, SystemStats, AuditEntry } from '../types';
+import { User, UserRole, Transmission, SystemStats, AuditEntry, Announcement } from '../types';
 import EmployeeDashboard from '../dashboards/EmployeeDashboard';
 import SupervisorDashboard from '../dashboards/SupervisorDashboard';
 import DeptHeadDashboard from '../dashboards/DeptHeadDashboard';
@@ -12,8 +12,11 @@ interface DashboardProps {
   pendingTransmissions: Transmission[];
   validatedStats: Record<string, SystemStats>;
   auditLogs: AuditEntry[];
+  announcements: Announcement[];
   onTransmit: (t: Transmission) => void;
   onValidate: (id: string, overrides?: SystemStats) => void;
+  onPostAnnouncement: (message: string) => void;
+  onDeleteAnnouncement: (id: string) => void;
   onAddAuditEntry: (action: string, details: string, type?: 'INFO' | 'OK' | 'WARN', userName?: string) => void;
   onDeleteUser: (userId: string, userName: string) => void;
 }
@@ -23,8 +26,11 @@ const Dashboard: React.FC<DashboardProps> = ({
   pendingTransmissions, 
   validatedStats, 
   auditLogs,
+  announcements,
   onTransmit, 
   onValidate,
+  onPostAnnouncement,
+  onDeleteAnnouncement,
   onAddAuditEntry,
   onDeleteUser
 }) => {
@@ -34,6 +40,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <EmployeeDashboard 
           user={user} 
           validatedStats={validatedStats[user.id]} 
+          announcements={announcements}
           onTransmit={onTransmit} 
         />
       );
@@ -42,7 +49,11 @@ const Dashboard: React.FC<DashboardProps> = ({
         <SupervisorDashboard 
           user={user} 
           pendingTransmissions={pendingTransmissions} 
+          announcements={announcements}
           onValidate={onValidate} 
+          onAddAuditEntry={onAddAuditEntry}
+          onPostAnnouncement={onPostAnnouncement}
+          onDeleteAnnouncement={onDeleteAnnouncement}
         />
       );
     case UserRole.DEPT_HEAD:
