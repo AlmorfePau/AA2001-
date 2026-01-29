@@ -1,22 +1,16 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { User, AuditEntry, UserRole } from '../types';
 import { 
-  BarChart3, 
   Settings, 
   Terminal, 
-  Shield, 
-  Scale, 
-  Target, 
   CircleDollarSign, 
   Download,
-  ArrowDownCircle,
   CheckCircle2,
   Users,
   Plus,
   Share2,
   X,
   UserPlus,
-  RefreshCw,
   ChevronDown,
   Trash2,
   Save
@@ -25,13 +19,15 @@ import {
 interface Props {
   user: User;
   auditLogs: AuditEntry[];
+  onAddAuditEntry: (action: string, details: string, type?: 'INFO' | 'OK' | 'WARN', userName?: string) => void;
+  onDeleteUser: (userId: string, userName: string) => void;
 }
 
 const INITIAL_DEPARTMENTS = ['Technical', 'Sales', 'Marketing', 'Admin', 'Accounting'];
 const ADMIN_VERIFICATION_KEY = "SECURE-AA2001";
 const DEFAULT_NODE_PASSKEY = "12345";
 
-const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
+const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onDeleteUser }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const deptTabsRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -46,13 +42,14 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
 
   const [usersByDept, setUsersByDept] = useState<Record<string, string[]>>(() => {
     const saved = localStorage.getItem('aa2001_admin_users');
-    let registry: Record<string, string[]>;
     if (saved) {
-      registry = JSON.parse(saved);
-    } else {
-      registry = INITIAL_DEPARTMENTS.reduce((acc, dept) => ({ ...acc, [dept]: [] }), {});
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return INITIAL_DEPARTMENTS.reduce((acc, dept) => ({ ...acc, [dept]: [] }), {});
+      }
     }
-    return registry;
+    return INITIAL_DEPARTMENTS.reduce((acc, dept) => ({ ...acc, [dept]: [] }), {});
   });
 
   const [activeDept, setActiveDept] = useState<string>('Technical');
@@ -61,9 +58,10 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [newEmployeeRole, setNewEmployeeRole] = useState<UserRole>(UserRole.EMPLOYEE);
   const [draggedUser, setDraggedUser] = useState<string | null>(null);
-
-  // Edit Modal State
   const [editingNode, setEditingNode] = useState<{ originalName: string, name: string, role: UserRole } | null>(null);
+
+  // Use a version counter to force-refresh roleMap when localStorage changes
+  const [registryVersion, setRegistryVersion] = useState(0);
 
   const roleMap = useMemo(() => {
     const regRaw = localStorage.getItem('aa2001_credential_registry');
@@ -77,7 +75,7 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
     } catch (e) {
       return {};
     }
-  }, [usersByDept, isProvisioning, editingNode]);
+  }, [usersByDept, isProvisioning, editingNode, registryVersion]);
 
   useEffect(() => {
     localStorage.setItem('aa2001_admin_depts', JSON.stringify(availableDepts));
@@ -88,9 +86,7 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
   }, [usersByDept]);
 
   const scrollToBottom = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   };
 
   useEffect(() => {
@@ -115,7 +111,7 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
 
     setUsersByDept(prev => ({
       ...prev,
-      [activeDept]: prev[activeDept].map(u => u === originalName ? trimmedName : u)
+      [activeDept]: (prev[activeDept] || []).map(u => u === originalName ? trimmedName : u)
     }));
 
     const regRaw = localStorage.getItem('aa2001_credential_registry');
@@ -125,38 +121,64 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
         u.name === originalName ? { ...u, name: trimmedName, role: role } : u
       );
       localStorage.setItem('aa2001_credential_registry', JSON.stringify(updatedReg));
+      setRegistryVersion(v => v + 1);
     }
 
+    onAddAuditEntry('ADMIN_OVERRIDE', `Modified node: ${originalName} -> ${trimmedName} (${role})`, 'OK');
     triggerToast('Node Updated', `Changes committed for ${trimmedName}`);
     setEditingNode(null);
   };
 
   const handleDeleteNode = (userName: string) => {
-    if (!window.confirm(`STRICT PROTOCOL: CONFIRM PERMANENT REMOVAL OF NODE "${userName}"?`)) return;
-
-    setUsersByDept(prev => ({
-      ...prev,
-      [activeDept]: prev[activeDept].filter(u => u !== userName)
-    }));
-
-    const regRaw = localStorage.getItem('aa2001_credential_registry');
-    if (regRaw) {
-      const reg = JSON.parse(regRaw);
-      const updatedReg = reg.filter((u: any) => u.name !== userName);
-      localStorage.setItem('aa2001_credential_registry', JSON.stringify(updatedReg));
+    // Root security check
+    if (userName === "Paulo Almorfe") {
+       triggerToast('Security Violation', 'Root administrator accounts cannot be purged.');
+       onAddAuditEntry('SECURITY_ALERT', 'Denied unauthorized attempt to purge Root Administrator node.', 'WARN');
+       return;
     }
 
-    triggerToast('Node Removed', `Personnel record for ${userName} purged from system.`);
+    // Confirmation Protocol
+    if (!window.confirm(`STRICT PROTOCOL: ARE YOU ABSOLUTELY SURE YOU WANT TO PERMANENTLY REMOVAL THE NODE "${userName}" FROM THE CORE REGISTRY? THIS ACTION IS IRREVERSIBLE.`)) return;
+
+    // 1. Calculate the user's stable ID (matching LoginCard logic)
+    const userId = btoa(userName).substring(0, 12);
+    
+    // 2. Trigger global purge (registry, stats, etc in App state and localStorage)
+    onDeleteUser(userId, userName);
+
+    // 3. Update local Admin dashboard state (purge from the internal state list)
+    setUsersByDept(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(dept => {
+        updated[dept] = (updated[dept] || []).filter(u => u !== userName);
+      });
+      return updated;
+    });
+
+    // 4. Force refresh of the registry data for the dashboard UI
+    setRegistryVersion(v => v + 1);
+
+    triggerToast('Node Removed', `Personnel record for ${userName} purged from core system.`);
     setEditingNode(null);
   };
 
   const handleExecuteTransfer = (userName: string, targetDept: string) => {
-    if (activeDept === targetDept) return;
+    if (!userName) return;
+    
+    // Find where the user is currently located in the state
+    let sourceDept = activeDept;
+    Object.keys(usersByDept).forEach(dept => {
+      if (usersByDept[dept].includes(userName)) {
+        sourceDept = dept;
+      }
+    });
+
+    if (sourceDept === targetDept) return;
     
     setUsersByDept(prev => {
-      const sourceUsers = prev[activeDept].filter(u => u !== userName);
+      const sourceUsers = (prev[sourceDept] || []).filter(u => u !== userName);
       const targetUsers = [...(prev[targetDept] || []), userName];
-      return { ...prev, [activeDept]: sourceUsers, [targetDept]: targetUsers };
+      return { ...prev, [sourceDept]: sourceUsers, [targetDept]: targetUsers };
     });
     
     const regRaw = localStorage.getItem('aa2001_credential_registry');
@@ -164,8 +186,10 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
       const reg = JSON.parse(regRaw);
       const updatedReg = reg.map((u: any) => u.name === userName ? { ...u, department: targetDept } : u);
       localStorage.setItem('aa2001_credential_registry', JSON.stringify(updatedReg));
+      setRegistryVersion(v => v + 1);
     }
 
+    onAddAuditEntry('ADMIN_TRANSFER', `Transferred ${userName} from ${sourceDept} to ${targetDept}`, 'INFO');
     setTransferringNode(null);
     triggerToast('Node Transfered', `${userName} re-routed to ${targetDept} registry.`);
   };
@@ -186,6 +210,9 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
         role: newEmployeeRole
       });
       localStorage.setItem('aa2001_credential_registry', JSON.stringify(registry));
+      setRegistryVersion(v => v + 1);
+      
+      onAddAuditEntry('ADMIN_PROVISION', `New node provisioned: ${trimmed} (${newEmployeeRole}) in ${activeDept}`, 'OK');
       triggerToast('Node Provisioned', `${trimmed} established in core.`);
       setNewEmployeeName('');
       setIsProvisioning(false);
@@ -199,8 +226,16 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
     if (adminKey === ADMIN_VERIFICATION_KEY) {
       setAvailableDepts(prev => [...prev, newDeptName.trim()]);
       setUsersByDept(prev => ({ ...prev, [newDeptName.trim()]: [] }));
+      onAddAuditEntry('ADMIN_CONFIG', `Structural update: New department "${newDeptName.trim()}" created`, 'OK');
       triggerToast('Core Updated', `New unit provisioned.`);
+    } else {
+      onAddAuditEntry('ADMIN_CONFIG', `Denied attempt to create department "${newDeptName.trim()}": Invalid Auth Key`, 'WARN');
     }
+  };
+
+  const handleExportLogs = () => {
+    onAddAuditEntry('ADMIN_EXPORT', 'ISO-9001 Audit Trail exported by administrator', 'INFO');
+    triggerToast('Audit Export', 'ISO-9001 Logs compiled and exported.');
   };
 
   return (
@@ -244,7 +279,7 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
                   >
                     {Object.values(UserRole).map(role => <option key={role} value={role}>{role}</option>)}
                   </select>
-                  <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 </div>
               </div>
             </div>
@@ -255,13 +290,6 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
               >
                 <Save className="w-4 h-4" />
                 Commit Changes
-              </button>
-              <button 
-                onClick={() => handleDeleteNode(editingNode.originalName)}
-                className="w-full bg-white border border-red-100 text-red-500 py-4 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:bg-red-50 transition-all flex items-center justify-center gap-3"
-              >
-                <Trash2 className="w-4 h-4" />
-                De-provision Node
               </button>
             </div>
           </div>
@@ -292,7 +320,10 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
           <p className="text-slate-500 text-sm mt-2 font-medium">Personnel: <span className="text-blue-600 font-bold">{user.name}</span> • Status: <span className="text-[#1e293b] font-bold">Privileged Connection</span></p>
         </div>
 
-        <button className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-5 min-w-[220px] hover:bg-slate-50 transition-colors">
+        <button 
+          onClick={handleExportLogs}
+          className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-5 min-w-[220px] hover:bg-slate-50 transition-colors"
+        >
           <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
             <Download className="w-6 h-6 text-blue-600" />
           </div>
@@ -382,7 +413,7 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
               {(usersByDept[activeDept] || []).map((userName) => (
                 <div 
                   key={userName} 
-                  draggable 
+                  draggable
                   onDragStart={() => setDraggedUser(userName)}
                   onDragEnd={() => setDraggedUser(null)}
                   className="group flex items-center justify-between p-5 bg-slate-50/40 rounded-[2rem] hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100 cursor-grab active:cursor-grabbing"
@@ -403,6 +434,7 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
                     <button 
                       onClick={() => handleOpenEdit(userName)}
                       className="p-2.5 rounded-xl text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-all"
+                      title="Manage Node"
                     >
                       <Settings className="w-4 h-4" />
                     </button>
@@ -410,6 +442,7 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
                       <button 
                         onClick={() => setTransferringNode(transferringNode === userName ? null : userName)}
                         className={`p-2.5 rounded-xl transition-all ${transferringNode === userName ? 'bg-blue-600 text-white' : 'text-slate-300 hover:text-blue-500 hover:bg-blue-50'}`}
+                        title="Route Node"
                       >
                         <Share2 className="w-4 h-4" />
                       </button>
@@ -428,6 +461,14 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
                         </div>
                       )}
                     </div>
+                    {/* Trashcan button to delete person */}
+                    <button 
+                      onClick={() => handleDeleteNode(userName)}
+                      className="p-2.5 rounded-xl text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                      title="De-provision Node (Delete)"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -450,7 +491,7 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs }) => {
                   <span className="text-slate-400 shrink-0">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${log.type === 'OK' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>{log.action}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${log.type === 'OK' ? 'bg-emerald-100 text-emerald-700' : log.type === 'WARN' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{log.action}</span>
                       <span className="text-slate-900 font-bold">{log.user}</span>
                     </div>
                     <p className="text-slate-500 leading-relaxed">{log.details}</p>

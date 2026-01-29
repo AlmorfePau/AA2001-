@@ -73,7 +73,7 @@ const App: React.FC = () => {
       timestamp: new Date().toISOString(),
       type
     };
-    setNotifications(prev => [newNotif, ...prev].slice(0, 100)); // Increased limit to accommodate multiple users
+    setNotifications(prev => [newNotif, ...prev].slice(0, 100));
   }, []);
 
   const deleteNotification = useCallback((id: string) => {
@@ -89,23 +89,15 @@ const App: React.FC = () => {
       details,
       type
     };
-    setAuditLogs(prev => [entry, ...prev].slice(0, 100));
+    setAuditLogs(prev => [entry, ...prev].slice(0, 500));
   }, [user]);
 
   const handleLogin = useCallback((loggedInUser: User) => {
     setUser(loggedInUser);
     setIsAuthenticated(true);
     addNotification(`Welcome back, ${loggedInUser.name}. Session established.`, loggedInUser.id, 'SUCCESS');
-    const entry: AuditEntry = {
-      id: Math.random().toString(36).substr(2, 8).toUpperCase(),
-      timestamp: new Date().toISOString(),
-      user: loggedInUser.name,
-      action: 'SESSION_INIT',
-      details: `Authorized login with role: ${loggedInUser.role}`,
-      type: 'OK'
-    };
-    setAuditLogs(prev => [entry, ...prev].slice(0, 100));
-  }, [addNotification]);
+    addAuditEntry('SESSION_INIT', `Authorized login with role: ${loggedInUser.role}`, 'OK', loggedInUser.name);
+  }, [addNotification, addAuditEntry]);
 
   const handleLogout = useCallback(() => {
     addAuditEntry('SESSION_TERM', 'User terminated secure connection', 'INFO');
@@ -116,7 +108,6 @@ const App: React.FC = () => {
   const handleTransmit = useCallback((transmission: Transmission) => {
     if (!user) return;
     setPendingTransmissions(prev => [...prev, transmission]);
-    // Notify the transmitting employee
     addNotification(`Transmission ${transmission.id} has been broadcast to the network.`, user.id, 'INFO');
     addAuditEntry('DATA_TRANSMIT', `Node update ${transmission.id} submitted for review`, 'INFO', transmission.userName);
   }, [user, addAuditEntry, addNotification]);
@@ -136,15 +127,51 @@ const App: React.FC = () => {
       }));
       setPendingTransmissions(prev => prev.filter(t => t.id !== transmissionId));
       
-      // Notify the supervisor (current user)
       addNotification(`Transmission ${transmissionId} successfully validated${overrides ? ' with manual override' : ''}.`, user.id, 'SUCCESS');
-      
-      // Notify the employee who sent it
       addNotification(`Your performance log ${transmissionId} has been verified by ${user.name}.`, transmission.userId, 'SUCCESS');
       
       addAuditEntry('VERIFY_SUCCESS', `Supervisor validated Transmission ${transmissionId}${overrides ? ' (Override applied)' : ''}`, 'OK');
     }
   }, [pendingTransmissions, user, addAuditEntry, addNotification]);
+
+  const handleDeleteUser = useCallback((userId: string, userName: string) => {
+    // 1. Permanently remove from the global credential registry
+    const regRaw = localStorage.getItem('aa2001_credential_registry');
+    if (regRaw) {
+      const reg = JSON.parse(regRaw);
+      const updatedReg = reg.filter((u: any) => u.name !== userName);
+      localStorage.setItem('aa2001_credential_registry', JSON.stringify(updatedReg));
+    }
+
+    // 2. Clear from administrative department list (aa2001_admin_users) in persistent storage
+    const adminUsersRaw = localStorage.getItem('aa2001_admin_users');
+    if (adminUsersRaw) {
+      try {
+        const adminUsers = JSON.parse(adminUsersRaw);
+        const updatedAdminUsers: Record<string, string[]> = {};
+        Object.keys(adminUsers).forEach(dept => {
+          updatedAdminUsers[dept] = adminUsers[dept].filter((name: string) => name !== userName);
+        });
+        localStorage.setItem('aa2001_admin_users', JSON.stringify(updatedAdminUsers));
+      } catch (e) {
+        console.error("Failed to parse admin users for deletion", e);
+      }
+    }
+
+    // 3. Wipe all node-specific metrics and history in current session state
+    setPendingTransmissions(prev => prev.filter(t => t.userId !== userId));
+    setNotifications(prev => prev.filter(n => n.targetUserId !== userId));
+    setValidatedStats(prev => {
+      const updated = { ...prev };
+      delete updated[userId];
+      return updated;
+    });
+
+    addAuditEntry('ADMIN_PURGE', `Permanently purged all records and access for node: ${userName}`, 'WARN');
+    
+    // Manually trigger a re-render/storage event for other components if needed
+    window.dispatchEvent(new Event('storage'));
+  }, [addAuditEntry]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -164,12 +191,14 @@ const App: React.FC = () => {
               auditLogs={auditLogs}
               onTransmit={handleTransmit}
               onValidate={handleValidate}
+              onAddAuditEntry={addAuditEntry}
+              onDeleteUser={handleDeleteUser}
             />
           </main>
         </>
       ) : (
         <div className="flex-grow flex flex-col items-center justify-center p-4 py-12 bg-gradient-to-br from-slate-50 to-blue-50">
-          <LoginCard onLogin={handleLogin} />
+          <LoginCard onLogin={handleLogin} onAddAuditEntry={addAuditEntry} />
         </div>
       )}
       

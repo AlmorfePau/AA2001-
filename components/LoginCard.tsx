@@ -5,6 +5,7 @@ import Logo from './Logo';
 
 interface LoginCardProps {
   onLogin: (user: User) => void;
+  onAddAuditEntry: (action: string, details: string, type?: 'INFO' | 'OK' | 'WARN', userName?: string) => void;
 }
 
 const ROLE_FINANCIALS: Record<UserRole, { base: number; target: number }> = {
@@ -27,7 +28,7 @@ const SORTED_ROLES = [
 const ADMIN_IDENTITY = "Paulo Almorfe";
 const ADMIN_PASSKEY = "123";
 
-const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
+const LoginCard: React.FC<LoginCardProps> = ({ onLogin, onAddAuditEntry }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.EXECUTIVE);
   const [name, setName] = useState('');
   const [passkey, setPasskey] = useState('');
@@ -58,7 +59,9 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
         localStorage.removeItem('aa2001_audit_logs');
         localStorage.removeItem('aa2001_notifications');
         localStorage.removeItem('aa2001_admin_users');
-        setFeedback({ type: 'ERROR', message: 'CORE DATABASE EMPTY. ACCESS REJECTED.' });
+        const errorMsg = 'CORE DATABASE EMPTY. ACCESS REJECTED.';
+        onAddAuditEntry('AUTH_FAILURE', `System core empty. Failed access attempt by: ${name.trim() || 'Anonymous'}`, 'WARN');
+        setFeedback({ type: 'ERROR', message: errorMsg });
         setIsLoading(false);
         return;
       }
@@ -66,6 +69,7 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
       // 1. Check Hardcoded Root Admin (Case-Sensitive)
       if (selectedRole === UserRole.ADMIN && name.trim() === ADMIN_IDENTITY) {
         if (passkey !== ADMIN_PASSKEY) {
+          onAddAuditEntry('AUTH_FAILURE', `Invalid admin passkey attempt for identity: ${ADMIN_IDENTITY}`, 'WARN');
           setFeedback({ type: 'ERROR', message: 'ACCESS DENIED: INVALID ADMIN PASSKEY' });
           setIsLoading(false);
           return;
@@ -81,6 +85,7 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
           const foundUser = matchedIdentity.find((u: any) => u.role === selectedRole);
 
           if (!foundUser) {
+            onAddAuditEntry('AUTH_FAILURE', `Role mismatch for ${name.trim()}. Requested: ${selectedRole}`, 'WARN');
             setFeedback({ 
               type: 'ERROR', 
               message: `ACCESS DENIED: LEVEL ${selectedRole.toUpperCase()} NOT AUTHORIZED FOR THIS NODE` 
@@ -90,6 +95,7 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
           }
 
           if (passkey !== foundUser.password) {
+            onAddAuditEntry('AUTH_FAILURE', `Invalid passkey for user node: ${name.trim()}`, 'WARN');
             setFeedback({ type: 'ERROR', message: 'ACCESS DENIED: INVALID PASSKEY' });
             setIsLoading(false);
             return;
@@ -98,6 +104,7 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
           setFeedback({ type: 'SUCCESS', message: `CONNECTING: DEPT ${foundUser.department.toUpperCase()}` });
         } 
         else {
+          onAddAuditEntry('AUTH_FAILURE', `Unrecognized identity login attempt: ${name.trim()}`, 'WARN');
           setFeedback({ type: 'ERROR', message: 'ACCESS DENIED: UNRECOGNIZED IDENTITY' });
           setIsLoading(false);
           return;

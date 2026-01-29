@@ -14,6 +14,8 @@ interface DashboardProps {
   auditLogs: AuditEntry[];
   onTransmit: (t: Transmission) => void;
   onValidate: (id: string, overrides?: SystemStats) => void;
+  onAddAuditEntry: (action: string, details: string, type?: 'INFO' | 'OK' | 'WARN', userName?: string) => void;
+  onDeleteUser: (userId: string, userName: string) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
@@ -22,7 +24,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   validatedStats, 
   auditLogs,
   onTransmit, 
-  onValidate 
+  onValidate,
+  onAddAuditEntry,
+  onDeleteUser
 }) => {
   switch (user.role) {
     case UserRole.EMPLOYEE:
@@ -44,7 +48,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     case UserRole.DEPT_HEAD:
       return <DeptHeadDashboard user={user} validatedStats={validatedStats} />;
     case UserRole.ADMIN:
-      return <AdminDashboard user={user} auditLogs={auditLogs} />;
+      return <AdminDashboard user={user} auditLogs={auditLogs} onAddAuditEntry={onAddAuditEntry} onDeleteUser={onDeleteUser} />;
     case UserRole.EXECUTIVE:
       return <ExecutiveDashboard user={user} />;
     default:
