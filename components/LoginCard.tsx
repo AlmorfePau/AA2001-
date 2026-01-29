@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import { LogIn, Shield, User as UserIcon, Lock, ChevronDown, Activity, Cpu, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -50,8 +49,21 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
     setTimeout(() => {
       const regRaw = localStorage.getItem('aa2001_credential_registry');
       const registry = regRaw ? JSON.parse(regRaw) : [];
+      let foundDept = 'Admin';
 
-      // 1. Check Hardcoded Root Admin
+      // Security Protocol: If the registry is empty and not root admin, purge stale data
+      if (registry.length === 0 && name.trim() !== ADMIN_IDENTITY) {
+        localStorage.removeItem('aa2001_pending_transmissions');
+        localStorage.removeItem('aa2001_validated_stats');
+        localStorage.removeItem('aa2001_audit_logs');
+        localStorage.removeItem('aa2001_notifications');
+        localStorage.removeItem('aa2001_admin_users');
+        setFeedback({ type: 'ERROR', message: 'CORE DATABASE EMPTY. ACCESS REJECTED.' });
+        setIsLoading(false);
+        return;
+      }
+
+      // 1. Check Hardcoded Root Admin (Case-Sensitive)
       if (selectedRole === UserRole.ADMIN && name.trim() === ADMIN_IDENTITY) {
         if (passkey !== ADMIN_PASSKEY) {
           setFeedback({ type: 'ERROR', message: 'ACCESS DENIED: INVALID ADMIN PASSKEY' });
@@ -60,17 +72,15 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
         }
         setFeedback({ type: 'SUCCESS', message: 'ADMINISTRATIVE ACCESS GRANTED' });
       } 
-      // 2. Check Credential Registry (Strictly matching Name and Role)
+      // 2. Check Credential Registry (Strictly matching Name and Role - Now Case-Sensitive)
       else {
-        // Search registry for the name first
-        const matchedIdentity = registry.filter((u: any) => u.name.toLowerCase() === name.trim().toLowerCase());
+        // Changed to exact match to enforce case-sensitivity for registry identities
+        const matchedIdentity = registry.filter((u: any) => u.name === name.trim());
         
         if (matchedIdentity.length > 0) {
-          // Check if any of these matching names have the selected role
           const foundUser = matchedIdentity.find((u: any) => u.role === selectedRole);
 
           if (!foundUser) {
-            // User exists but at a different security tier
             setFeedback({ 
               type: 'ERROR', 
               message: `ACCESS DENIED: LEVEL ${selectedRole.toUpperCase()} NOT AUTHORIZED FOR THIS NODE` 
@@ -84,16 +94,13 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
             setIsLoading(false);
             return;
           }
+          foundDept = foundUser.department;
           setFeedback({ type: 'SUCCESS', message: `CONNECTING: DEPT ${foundUser.department.toUpperCase()}` });
         } 
-        // 3. Fallback for demo/unprovisioned accounts (Must be 12345)
         else {
-          if (passkey !== '12345') {
-            setFeedback({ type: 'ERROR', message: 'ACCESS DENIED: UNRECOGNIZED IDENTITY' });
-            setIsLoading(false);
-            return;
-          }
-          setFeedback({ type: 'SUCCESS', message: 'IDENTITY VERIFIED. CONNECTING...' });
+          setFeedback({ type: 'ERROR', message: 'ACCESS DENIED: UNRECOGNIZED IDENTITY' });
+          setIsLoading(false);
+          return;
         }
       }
 
@@ -104,10 +111,11 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin }) => {
         onLogin({
           id: stableId,
           name: name || `User_${selectedRole}`,
-          email: `${(name || selectedRole).toLowerCase().replace(/\s/g, '')}@aa2001.com`,
+          email: `${(name || selectedRole).replace(/\s/g, '')}@aa2001.com`,
           role: selectedRole,
           baseSalary: financial.base,
-          incentiveTarget: financial.target
+          incentiveTarget: financial.target,
+          department: foundDept
         });
       }, 800);
     }, 1200);

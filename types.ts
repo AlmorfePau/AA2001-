@@ -44,6 +44,7 @@ export interface User {
   role: UserRole;
   baseSalary: number;
   incentiveTarget: number;
+  department?: string;
 }
 
 export interface AppState {

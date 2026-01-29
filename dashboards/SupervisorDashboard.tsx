@@ -101,6 +101,11 @@ const SupervisorDashboard: React.FC<Props> = ({ user, pendingTransmissions, onVa
           <div className="flex items-center gap-2">
             <span className="px-3 py-1 bg-[#2563eb] text-white text-[10px] font-black uppercase tracking-widest rounded-md">3P CERTIFIED SYSTEM</span>
             <span className="px-3 py-1 bg-[#0f172a] text-white text-[10px] font-black uppercase tracking-widest rounded-md">LEVEL: SUPERVISOR</span>
+            {user.department && (
+              <span className="px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-blue-200">
+                DEPT: {user.department}
+              </span>
+            )}
           </div>
           <div>
             <h1 className="text-[40px] font-black text-[#1e293b] tracking-tight leading-none">Unit Performance Console</h1>

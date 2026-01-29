@@ -5,7 +5,7 @@ import {
   BarChart3, 
   Target, 
   Shield, 
-  Scale,
+  Scale, 
   CircleDollarSign,
   PieChart
 } from 'lucide-react';
@@ -18,14 +18,17 @@ interface Props {
 const DeptHeadDashboard: React.FC<Props> = ({ user, validatedStats = {} }) => {
   // Calculate aggregate metrics from validated data
   const aggregateMetrics = useMemo(() => {
-    const statsArray = Object.values(validatedStats);
+    // Cast Object.values to SystemStats[] to ensure proper type inference
+    const statsArray = Object.values(validatedStats) as SystemStats[];
     if (statsArray.length === 0) {
       return { efficiency: "99.8", variance: "99.8", delivery: "99.8", count: 0 };
     }
 
-    const avgAccuracy = statsArray.reduce((acc, s) => acc + parseFloat(s.accuracy), 0) / statsArray.length;
-    const avgUptime = statsArray.reduce((acc, s) => acc + parseFloat(s.uptime), 0) / statsArray.length;
-    const avgResp = statsArray.reduce((acc, s) => acc + parseFloat(s.responseTime), 0) / statsArray.length;
+    // Explicitly typed parameters and return value to avoid 'unknown' type inference errors in reduce and arithmetic operations
+    // Wrap reduce calls in parentheses to clarify precedence for the compiler
+    const avgAccuracy = (statsArray.reduce((acc: number, s: SystemStats) => acc + parseFloat(s.accuracy), 0) as number) / statsArray.length;
+    const avgUptime = (statsArray.reduce((acc: number, s: SystemStats) => acc + parseFloat(s.uptime), 0) as number) / statsArray.length;
+    const avgResp = (statsArray.reduce((acc: number, s: SystemStats) => acc + parseFloat(s.responseTime), 0) as number) / statsArray.length;
 
     return {
       efficiency: (avgAccuracy * (avgUptime / 100)).toFixed(1),
@@ -37,8 +40,9 @@ const DeptHeadDashboard: React.FC<Props> = ({ user, validatedStats = {} }) => {
 
   // Map validated stats to the productivity chart
   const productivityBars = useMemo(() => {
-    const statsArray = Object.values(validatedStats).slice(0, 5);
-    const bars = statsArray.map(s => (parseFloat(s.accuracy) * parseFloat(s.uptime)) / 100);
+    const statsArray = (Object.values(validatedStats) as SystemStats[]).slice(0, 5);
+    // Explicitly typed parameter to avoid 'unknown' type inference errors in map and property access
+    const bars = statsArray.map((s: SystemStats) => (parseFloat(s.accuracy) * parseFloat(s.uptime)) / 100);
     // Fill with mocks if data is low
     while (bars.length < 5) bars.push(40 + Math.random() * 40);
     return bars;
