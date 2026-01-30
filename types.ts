@@ -1,4 +1,3 @@
-
 export enum UserRole {
   EMPLOYEE = 'Employee',
   SUPERVISOR = 'Supervisor',
@@ -11,6 +10,14 @@ export interface SystemStats {
   responseTime: string;
   accuracy: string;
   uptime: string;
+  // Grading Matrix
+  ratings?: {
+    performance: number;   // 45% weight
+    proficiency: number;   // 35% weight
+    professionalism: number; // 20% weight
+    finalScore: number;     // Weighted Total
+    incentivePct: number;   // Eligibility: 0, 0.25, 0.5, 0.75, or 1.0
+  };
 }
 
 export interface Transmission extends SystemStats {
@@ -18,6 +25,12 @@ export interface Transmission extends SystemStats {
   userId: string;
   userName: string;
   timestamp: string;
+  jobId: string;
+  clientSite: string;
+  jobType: string;
+  systemStatus: string;
+  projectReport?: string;
+  attachments?: { name: string, type: string, size: string }[];
 }
 
 export interface AuditEntry {

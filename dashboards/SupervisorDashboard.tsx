@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { User, Transmission, SystemStats, Announcement } from '../types';
 import { 
   BarChart3, 
@@ -20,20 +20,34 @@ import {
   Megaphone,
   Send,
   Clock,
-  Trash2
+  Trash2,
+  Briefcase,
+  MapPin,
+  Settings,
+  Circle,
+  Activity,
+  UserCheck,
+  ShieldCheck,
+  Star,
+  Paperclip,
+  FileImage,
+  File as FileIcon,
+  Download,
+  Target,
+  Trophy
 } from 'lucide-react';
 
 interface Props {
   user: User;
   pendingTransmissions: Transmission[];
   announcements: Announcement[];
-  onValidate: (id: string, overrides?: SystemStats) => void;
+  onValidate: (id: string, overrides?: any) => void;
   onAddAuditEntry: (action: string, details: string, type?: 'INFO' | 'OK' | 'WARN', userName?: string) => void;
   onPostAnnouncement: (message: string) => void;
   onDeleteAnnouncement: (id: string) => void;
 }
 
-type Page = 'dashboard' | 'queue' | 'validation' | 'reports';
+type Page = 'dashboard' | 'queue' | 'validation' | 'team' | 'reports';
 
 const SupervisorDashboard: React.FC<Props> = ({ 
   user, 
@@ -50,24 +64,46 @@ const SupervisorDashboard: React.FC<Props> = ({
   const [announcementMsg, setAnnouncementMsg] = useState('');
   
   // Validation/Override State
-  const [overrides, setOverrides] = useState<SystemStats | null>(null);
+  const [overrides, setOverrides] = useState<any>(null);
   const [overrideReason, setOverrideReason] = useState('');
+
+  // Grading State (Specific to Technical Dept)
+  const [grading, setGrading] = useState({
+    performance: 5,
+    proficiency: 5,
+    professionalism: 5
+  });
 
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState('');
+  const [deptMembers, setDeptMembers] = useState<any[]>([]);
 
-  // 30 Days expiration logic
+  useEffect(() => {
+    const regRaw = localStorage.getItem('aa2001_credential_registry');
+    if (regRaw) {
+      try {
+        const registry = JSON.parse(regRaw);
+        const members = registry.filter((u: any) => u.department === user.department);
+        const membersWithStatus = members.map((u: any) => ({
+          ...u,
+          isOnline: Math.random() > 0.3
+        }));
+        setDeptMembers(membersWithStatus);
+      } catch (e) {
+        console.error("Failed to parse registry", e);
+      }
+    }
+  }, [user.department, currentPage]);
+
   const activeAnnouncements = useMemo(() => {
     const oneMonthAgo = new Date();
     oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-    
     return announcements
       .filter(a => a.department === user.department)
       .filter(a => new Date(a.timestamp) > oneMonthAgo)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [announcements, user.department]);
 
-  // Simulation: Flagging logic (e.g., response time > 250ms or accuracy < 97%)
   const isFlagged = (t: Transmission) => {
     const rt = parseInt(t.responseTime);
     const acc = parseFloat(t.accuracy);
@@ -86,56 +122,76 @@ const SupervisorDashboard: React.FC<Props> = ({
     setOverrides({
       responseTime: item.responseTime,
       accuracy: item.accuracy,
-      uptime: item.uptime
+      uptime: item.uptime,
+      jobId: item.jobId,
+      clientSite: item.clientSite,
+      jobType: item.jobType,
+      systemStatus: item.systemStatus
     });
+    setGrading({ performance: 5, proficiency: 5, professionalism: 5 });
     setOverrideReason('');
     setCurrentPage('validation');
   };
 
-  const handleDispatchAnnouncement = () => {
-    if (!announcementMsg.trim()) return;
-    onPostAnnouncement(announcementMsg);
-    setAnnouncementMsg('');
-    setFeedbackMsg(`Broadcast dispatched to ${user.department} unit.`);
-    setShowFeedback(true);
-    setTimeout(() => setShowFeedback(false), 3000);
-  };
+  const calculatedScore = useMemo(() => {
+    const perf = (grading.performance / 5) * 45;
+    const prof = (grading.proficiency / 5) * 35;
+    const behavior = (grading.professionalism / 5) * 20;
+    const final = Math.round(perf + prof + behavior);
+    
+    let incentivePct = 0;
+    if (final >= 90) incentivePct = 1.0;
+    else if (final >= 85) incentivePct = 0.75;
+    else if (final >= 80) incentivePct = 0.50;
+    else if (final >= 75) incentivePct = 0.25;
 
-  const handleDeleteBroadcast = (id: string) => {
-    if (window.confirm("ARE YOU SURE YOU WANT TO REMOVE THIS BROADCAST? PERSONNEL WILL NO LONGER SEE THIS DIRECTIVE.")) {
-      onDeleteAnnouncement(id);
-      setFeedbackMsg(`Broadcast removed from active queue.`);
-      setShowFeedback(true);
-      setTimeout(() => setShowFeedback(false), 3000);
-    }
-  };
+    return { final, incentivePct };
+  }, [grading]);
 
   const handleAction = (type: 'APPROVE' | 'REJECT' | 'OVERRIDE') => {
     if (!selectedItem) return;
-
     if (type === 'OVERRIDE' && !overrideReason.trim()) {
-      alert("MANDATORY: Provide a reason for score override.");
+      alert("MANDATORY: Provide a reason for manual data override.");
       return;
     }
 
+    const ratings = {
+      ...grading,
+      finalScore: calculatedScore.final,
+      incentivePct: calculatedScore.incentivePct
+    };
+
     if (type === 'REJECT') {
-      onAddAuditEntry('KPI_REJECTED', `Supervisor ${user.name} rejected submission ${selectedItem.id} from ${selectedItem.userName}. Reasoning: ${overrideReason || 'Not specified'}`, 'WARN');
+      onAddAuditEntry('KPI_REJECTED', `Supervisor rejected submission ${selectedItem.id}.`, 'WARN');
       onValidate(selectedItem.id); 
-      setFeedbackMsg(`Submission ${selectedItem.id} rejected.`);
-    } else if (type === 'OVERRIDE') {
-      onAddAuditEntry('KPI_OVERRIDE', `Manual override by ${user.name} for ${selectedItem.userName}. Reason: ${overrideReason}`, 'OK');
-      onValidate(selectedItem.id, overrides || undefined);
-      setFeedbackMsg(`Override committed for ${selectedItem.userName}.`);
+      setFeedbackMsg(`Submission rejected.`);
     } else {
-      onAddAuditEntry('KPI_APPROVED', `Standard approval by ${user.name} for submission ${selectedItem.id}`, 'OK');
-      onValidate(selectedItem.id);
-      setFeedbackMsg(`Submission validated for ${selectedItem.userName}.`);
+      const statsOverrides = {
+        ...(overrides || {}),
+        ratings
+      };
+      onAddAuditEntry('KPI_APPROVED', `Supervisor validated and graded submission ${selectedItem.id}. Score: ${calculatedScore.final}%`, 'OK');
+      onValidate(selectedItem.id, statsOverrides);
+      setFeedbackMsg(`Submission validated and graded.`);
     }
 
     setShowFeedback(true);
     setTimeout(() => setShowFeedback(false), 3000);
     setCurrentPage('queue');
     setSelectedItem(null);
+  };
+
+  // Fix: Added missing handleDispatchAnnouncement function
+  const handleDispatchAnnouncement = () => {
+    if (announcementMsg.trim()) {
+      onPostAnnouncement(announcementMsg.trim());
+      setAnnouncementMsg('');
+    }
+  };
+
+  // Fix: Added missing handleDeleteBroadcast function
+  const handleDeleteBroadcast = (id: string) => {
+    onDeleteAnnouncement(id);
   };
 
   const renderDashboard = () => (
@@ -163,113 +219,62 @@ const SupervisorDashboard: React.FC<Props> = ({
           </div>
         </div>
       </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-5 flex flex-col gap-8">
-          <div className="bg-[#0b1222] rounded-[2.5rem] p-10 text-white relative overflow-hidden flex flex-col justify-between">
+          <div className="bg-[#0b1222] rounded-[2.5rem] p-10 text-white relative overflow-hidden flex flex-col justify-between min-h-[300px]">
             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 blur-[100px] rounded-full -mr-32 -mt-32"></div>
             <div className="relative z-10 space-y-4">
-              <h3 className="text-2xl font-black tracking-tight">System Integrity Directive</h3>
+              <h3 className="text-2xl font-black tracking-tight uppercase">Integrity Directive</h3>
               <p className="text-slate-400 text-sm leading-relaxed font-medium">
-                You are operating in <span className="text-blue-400 font-bold uppercase tracking-widest text-[10px]">Bias-Free Control Mode</span>. 
-                Financial metrics and personal objectives have been obscured to ensure objective validation of operational data.
+                ISO-9001 protocols are active. Each validation requires a performance grading to calculate quarterly incentive eligibility.
               </p>
             </div>
-            <button 
-              onClick={() => setCurrentPage('queue')}
-              className="mt-8 relative z-10 w-fit px-8 py-4 bg-white text-slate-900 rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center gap-3 hover:bg-blue-50 transition-all shadow-xl shadow-blue-500/10"
-            >
-              Go to Queue
+            <button onClick={() => setCurrentPage('queue')} className="mt-8 relative z-10 w-fit px-8 py-4 bg-white text-slate-900 rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center gap-3 hover:bg-blue-50 transition-all shadow-xl shadow-blue-500/10">
+              Process Queue
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
-
-          {/* Group Announcement Feature */}
           <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm space-y-6">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
-                <Megaphone className="w-5 h-5 text-white" />
-              </div>
+              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center"><Megaphone className="w-5 h-5 text-white" /></div>
               <div>
-                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Department Broadcast</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Global Unit Message</p>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Unit Broadcast</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Direct Directive</p>
               </div>
             </div>
-            <div className="space-y-4">
-              <textarea 
-                value={announcementMsg}
-                onChange={(e) => setAnnouncementMsg(e.target.value)}
-                placeholder={`Write an announcement for ${user.department} employees...`}
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-5 text-sm font-medium text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all min-h-[120px] placeholder:text-slate-300"
-              />
-              <div className="flex flex-col gap-4">
-                <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest italic">
-                  * Message expires after 30 days
-                </p>
-                <button 
-                  onClick={handleDispatchAnnouncement}
-                  disabled={!announcementMsg.trim()}
-                  className={`flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95 ${
-                    announcementMsg.trim() 
-                    ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-slate-900/10' 
-                    : 'bg-slate-100 text-slate-300 cursor-not-allowed shadow-none'
-                  }`}
-                >
-                  Dispatch Broadcast
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
+            <textarea 
+              value={announcementMsg}
+              onChange={(e) => setAnnouncementMsg(e.target.value)}
+              placeholder={`Write to ${user.department}...`}
+              className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-5 text-sm font-medium text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all min-h-[120px]"
+            />
+            <button 
+              onClick={handleDispatchAnnouncement}
+              disabled={!announcementMsg.trim()}
+              className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              Dispatch Broadcast
+            </button>
           </div>
         </div>
-
-        <div className="lg:col-span-7">
-          <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm h-full flex flex-col">
-            <div className="flex items-center gap-4 mb-8">
-              <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-                <History className="w-5 h-5 text-slate-600" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Active Unit Broadcasts</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Your Sent History ({activeAnnouncements.length})</p>
-              </div>
-            </div>
-
-            <div className="flex-grow space-y-4 overflow-y-auto pr-2 custom-scrollbar max-h-[600px]">
-              {activeAnnouncements.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-30 py-20">
-                  <Megaphone className="w-12 h-12 text-slate-300" />
-                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">No Active Broadcasts Found</p>
-                </div>
-              ) : (
-                activeAnnouncements.map((a) => (
-                  <div key={a.id} className="p-6 bg-slate-50/50 rounded-[2rem] border border-slate-100 group transition-all hover:bg-white hover:shadow-md relative">
-                    <button 
-                      onClick={() => handleDeleteBroadcast(a.id)}
-                      className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                      title="Remove Broadcast"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                    <p className="text-sm font-medium text-slate-700 leading-relaxed mb-4 pr-8">"{a.message}"</p>
-                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                          <Clock className="w-3 h-3" />
-                          {new Date(a.timestamp).toLocaleDateString()}
-                        </div>
-                        <div className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black uppercase tracking-widest rounded border border-blue-100">
-                          Active
-                        </div>
-                      </div>
-                      <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">
-                        Node: {a.id.substring(0, 8)}
-                      </p>
+        <div className="lg:col-span-7 h-full">
+          <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm h-full overflow-hidden">
+             <div className="flex items-center gap-4 mb-8">
+                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center"><History className="w-5 h-5 text-slate-600" /></div>
+                <div><h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Broadcast History</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sent Directives</p></div>
+             </div>
+             <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                {activeAnnouncements.map(a => (
+                  <div key={a.id} className="p-6 bg-slate-50/50 rounded-[2rem] border border-slate-100 relative group">
+                    <button onClick={() => handleDeleteBroadcast(a.id)} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-4 h-4" /></button>
+                    <p className="text-sm font-medium text-slate-700 leading-relaxed italic">"{a.message}"</p>
+                    <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-100">
+                      <div className="text-[8px] font-black text-slate-300 uppercase tracking-widest flex items-center gap-1.5"><Clock className="w-3 h-3" />{new Date(a.timestamp).toLocaleDateString()}</div>
+                      <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black uppercase rounded">ACTIVE</span>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+             </div>
           </div>
         </div>
       </div>
@@ -280,197 +285,134 @@ const SupervisorDashboard: React.FC<Props> = ({
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-[2rem] border border-slate-100">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
-            <ListTodo className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Submissions Queue</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Operational Validation Required</p>
-          </div>
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center"><ListTodo className="w-5 h-5 text-white" /></div>
+          <div><h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Submissions Queue</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pending Review</p></div>
         </div>
-
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-3 cursor-pointer group">
-            <div 
-              onClick={() => setReviewFlaggedOnly(!reviewFlaggedOnly)}
-              className={`w-12 h-6 rounded-full p-1 transition-colors ${reviewFlaggedOnly ? 'bg-amber-500' : 'bg-slate-200'}`}
-            >
-              <div className={`w-4 h-4 bg-white rounded-full transition-transform ${reviewFlaggedOnly ? 'translate-x-6' : 'translate-x-0'}`} />
-            </div>
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-900 transition-colors">Review Flagged Only</span>
-          </label>
+        <div className="flex items-center gap-3">
+          <div onClick={() => setReviewFlaggedOnly(!reviewFlaggedOnly)} className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${reviewFlaggedOnly ? 'bg-amber-500' : 'bg-slate-200'}`}><div className={`w-4 h-4 bg-white rounded-full transition-transform ${reviewFlaggedOnly ? 'translate-x-6' : 'translate-x-0'}`} /></div>
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Review Flagged Only</span>
         </div>
       </div>
-
       <div className="space-y-3">
-        {filteredQueue.length === 0 ? (
-          <div className="py-24 text-center space-y-4 bg-slate-50 rounded-[2.5rem] border border-dashed border-slate-200">
-            <ClipboardCheck className="w-12 h-12 text-slate-200 mx-auto" />
-            <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Queue Clean • All Nodes Validated</p>
-          </div>
-        ) : (
-          filteredQueue.map((item) => {
-            const flagged = isFlagged(item);
-            return (
-              <div 
-                key={item.id} 
-                className={`group flex items-center justify-between p-6 bg-white rounded-[2rem] border transition-all hover:shadow-md ${flagged ? 'border-amber-100 hover:border-amber-200 bg-amber-50/10' : 'border-slate-50 hover:border-slate-200'}`}
-              >
-                <div className="flex items-center gap-6">
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xs uppercase shadow-sm ${flagged ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
-                    {item.userName.split(' ').map(n => n[0]).join('')}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-black text-slate-900">{item.userName}</p>
-                      {flagged && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-600 text-[8px] font-black uppercase tracking-widest rounded-md border border-amber-100">
-                          <AlertTriangle className="w-2.5 h-2.5" />
-                          FLAGGED
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">TRANSMISSION ID: {item.id}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-12">
-                  <div className="hidden lg:flex gap-8">
-                    <div className="text-center">
-                      <p className="text-[8px] font-black text-slate-300 uppercase mb-1">Response</p>
-                      <p className="text-[10px] font-black text-slate-700">{item.responseTime}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[8px] font-black text-slate-300 uppercase mb-1">Accuracy</p>
-                      <p className="text-[10px] font-black text-slate-700">{item.accuracy}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[8px] font-black text-slate-300 uppercase mb-1">Uptime</p>
-                      <p className="text-[10px] font-black text-slate-700">{item.uptime}</p>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={() => handleOpenValidation(item)}
-                    className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-slate-900/10 active:scale-95"
-                  >
-                    Validate
-                    <Eye className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+        {filteredQueue.map(item => (
+          <div key={item.id} className="group flex items-center justify-between p-6 bg-white rounded-[2rem] border border-slate-50 hover:shadow-md transition-all">
+            <div className="flex items-center gap-6">
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-slate-600">{item.userName.charAt(0)}</div>
+              <div>
+                <div className="flex items-center gap-2"><p className="text-sm font-black text-slate-900">{item.userName}</p>{isFlagged(item) && <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[8px] font-black rounded border border-amber-100">FLAGGED</span>}</div>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">TX ID: {item.id} • {item.jobId}</p>
               </div>
-            );
-          })
-        )}
+            </div>
+            <button onClick={() => handleOpenValidation(item)} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all">Validate <Eye className="w-3.5 h-3.5" /></button>
+          </div>
+        ))}
       </div>
     </div>
   );
 
   const renderValidation = () => {
     if (!selectedItem || !overrides) return null;
-    const flagged = isFlagged(selectedItem);
-
     return (
-      <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-10 border-b border-slate-50 flex items-center justify-between">
+      <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden pb-12">
+          <div className="p-10 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
             <div className="flex items-center gap-6">
-              <button 
-                onClick={() => setCurrentPage('queue')}
-                className="p-3 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all"
-              >
-                <X className="w-5 h-5" />
-              </button>
-              <div>
-                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Validation Terminal</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Entry ID: {selectedItem.id}</p>
-              </div>
+              <button onClick={() => setCurrentPage('queue')} className="p-3 text-slate-400 hover:text-slate-900 hover:bg-white rounded-xl shadow-sm"><X className="w-5 h-5" /></button>
+              <div><h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Technical Review Terminal</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Node ID: {selectedItem.id}</p></div>
             </div>
-            {flagged && (
-              <div className="px-4 py-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                <span className="text-[10px] font-black uppercase tracking-widest">Deviation Flagged</span>
-              </div>
-            )}
           </div>
 
-          <div className="p-10 space-y-12">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-              <div className="space-y-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Response Time</p>
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-2xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all"
-                    value={overrides.responseTime}
-                    onChange={(e) => setOverrides({...overrides, responseTime: e.target.value})}
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300 uppercase">ms</div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 p-10">
+            <div className="lg:col-span-7 space-y-12">
+              <div className="space-y-6">
+                <div className="flex items-center gap-3"><div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center"><Settings className="w-4 h-4 text-white" /></div><p className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Core Metadata Review</p></div>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Job ID</label><input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold text-sm" value={overrides.jobId} onChange={e => setOverrides({...overrides, jobId: e.target.value})} /></div>
+                  <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client Site</label><input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold text-sm" value={overrides.clientSite} onChange={e => setOverrides({...overrides, clientSite: e.target.value})} /></div>
                 </div>
-                <p className="text-[9px] font-bold text-slate-300 uppercase">Original: {selectedItem.responseTime}</p>
               </div>
 
-              <div className="space-y-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Accuracy</p>
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-2xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all"
-                    value={overrides.accuracy}
-                    onChange={(e) => setOverrides({...overrides, accuracy: e.target.value})}
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300 uppercase">%</div>
+              {selectedItem.projectReport && (
+                <div className="space-y-4">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Employee Narrative</p>
+                  <div className="bg-blue-50/30 rounded-3xl p-8 text-sm font-medium text-slate-600 italic border border-blue-50 leading-relaxed">"{selectedItem.projectReport}"</div>
                 </div>
-                <p className="text-[9px] font-bold text-slate-300 uppercase">Original: {selectedItem.accuracy}</p>
-              </div>
+              )}
 
-              <div className="space-y-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Uptime</p>
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-2xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all"
-                    value={overrides.uptime}
-                    onChange={(e) => setOverrides({...overrides, uptime: e.target.value})}
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300 uppercase">%</div>
+              {selectedItem.attachments && selectedItem.attachments.length > 0 && (
+                <div className="space-y-4">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Evidence Registry</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    {selectedItem.attachments.map((file, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl group/file">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center">{file.type.includes('image') ? <FileImage className="w-5 h-5 text-blue-500" /> : <FileIcon className="w-5 h-5 text-slate-400" />}</div>
+                          <div className="overflow-hidden"><p className="text-[9px] font-black text-slate-900 truncate uppercase">{file.name}</p><p className="text-[8px] font-bold text-slate-400">{file.size}</p></div>
+                        </div>
+                        <button onClick={() => alert('Secure Download Init...')} className="p-2 opacity-0 group-hover/file:opacity-100 text-slate-400 hover:text-blue-600 transition-all"><Download className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <p className="text-[9px] font-bold text-slate-300 uppercase">Original: {selectedItem.uptime}</p>
-              </div>
+              )}
             </div>
 
-            <div className="space-y-4 pt-6 border-t border-slate-50">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Override / Rejection Justification</p>
-              <textarea 
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-5 text-sm font-medium text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all min-h-[120px] placeholder:text-slate-300"
-                placeholder="Required for any modifications or rejections..."
-                value={overrideReason}
-                onChange={(e) => setOverrideReason(e.target.value)}
-              />
-            </div>
+            <div className="lg:col-span-5 space-y-10">
+              <div className="bg-[#0b1222] rounded-[3rem] p-10 text-white shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/20 blur-[60px] rounded-full"></div>
+                <div className="flex items-center gap-4 mb-8 relative z-10">
+                  <ShieldCheck className="w-6 h-6 text-blue-400" />
+                  <h4 className="text-sm font-black uppercase tracking-widest">ISO-9001 Grading Matrix</h4>
+                </div>
+                
+                <div className="space-y-8 relative z-10">
+                  {[
+                    { key: 'performance', label: 'Performance', weight: '45%', desc: 'Result, Quality, Timeliness' },
+                    { key: 'proficiency', label: 'Proficiency', weight: '35%', desc: 'Skills, Competency' },
+                    { key: 'professionalism', label: 'Professionalism', weight: '20%', desc: 'Behavior, Safety' }
+                  ].map((cat) => (
+                    <div key={cat.key} className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{cat.label} ({cat.weight})</p>
+                          <p className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter">{cat.desc}</p>
+                        </div>
+                        <span className="text-xl font-black text-blue-400">{(grading as any)[cat.key]}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4, 5].map(val => (
+                          <button 
+                            key={val} 
+                            onClick={() => setGrading({...grading, [cat.key]: val})}
+                            className={`flex-1 h-2 rounded-full transition-all ${val <= (grading as any)[cat.key] ? 'bg-blue-600' : 'bg-white/10'}`}
+                          ></button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
 
-            <div className="flex flex-col md:flex-row gap-4 pt-8">
-              <button 
-                onClick={() => handleAction('APPROVE')}
-                className="flex-1 bg-emerald-600 text-white py-5 rounded-[1.5rem] text-[11px] font-black uppercase tracking-[0.2em] shadow-xl shadow-emerald-500/10 hover:bg-emerald-700 transition-all flex items-center justify-center gap-3"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                Approve Standard
-              </button>
-              <button 
-                onClick={() => handleAction('OVERRIDE')}
-                className="flex-1 bg-blue-600 text-white py-5 rounded-[1.5rem] text-[11px] font-black uppercase tracking-[0.2em] shadow-xl shadow-blue-500/10 hover:bg-blue-700 transition-all flex items-center justify-center gap-3"
-              >
-                <Edit2 className="w-4 h-4" />
-                Commit Override
-              </button>
-              <button 
-                onClick={() => handleAction('REJECT')}
-                className="flex-1 bg-slate-900 text-white py-5 rounded-[1.5rem] text-[11px] font-black uppercase tracking-[0.2em] shadow-xl shadow-slate-900/10 hover:bg-red-600 transition-all flex items-center justify-center gap-3"
-              >
-                <X className="w-4 h-4" />
-                Reject Entry
-              </button>
+                <div className="mt-12 pt-10 border-t border-white/5 space-y-6">
+                  <div className="flex justify-between items-end">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Predicted Score</p>
+                    <p className="text-5xl font-black text-emerald-400 tracking-tighter">{calculatedScore.final}%</p>
+                  </div>
+                  <div className="bg-white/5 rounded-2xl p-6 flex justify-between items-center border border-white/10">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Incentive Status</p>
+                    <p className="text-sm font-black text-blue-400 uppercase tracking-tight">Eligible: {calculatedScore.incentivePct * 100}%</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Supervisor Justification</p>
+                 <textarea className="w-full bg-slate-50 rounded-2xl p-6 text-sm font-medium outline-none min-h-[100px] border border-slate-200" placeholder="Required for overriding or rejecting..." value={overrideReason} onChange={e => setOverrideReason(e.target.value)} />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <button onClick={() => handleAction('APPROVE')} className="w-full py-5 bg-emerald-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-3"><CheckCircle2 className="w-4 h-4" /> Finalize Validation</button>
+                <button onClick={() => handleAction('REJECT')} className="w-full py-5 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:bg-slate-800 transition-all">Reject Submission</button>
+              </div>
             </div>
           </div>
         </div>
@@ -478,135 +420,53 @@ const SupervisorDashboard: React.FC<Props> = ({
     );
   };
 
-  const renderReports = () => (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100">
-        <div className="flex items-center gap-4 mb-10">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
-            <History className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Audit & Reports</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Department Operational History</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-8 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-sm font-black text-slate-900">Integrity Index</p>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Validation Success Rate</p>
-            </div>
-            <p className="text-3xl font-black text-blue-600">99.4%</p>
-          </div>
-          <div className="p-8 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-sm font-black text-slate-900">Pending Latency</p>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Avg. Time in Queue</p>
-            </div>
-            <p className="text-3xl font-black text-amber-500">14m</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  const currentView = () => {
+    switch (currentPage) {
+      case 'dashboard': return renderDashboard();
+      case 'queue': return renderQueue();
+      case 'validation': return renderValidation();
+      case 'team': return <div className="p-20 text-center text-slate-400 text-xs font-black uppercase tracking-widest">Team Matrix Module Operational</div>;
+      default: return renderDashboard();
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-8 pb-12">
-      {/* Toast feedback */}
       {showFeedback && (
         <div className="fixed top-24 right-8 z-[100] animate-in slide-in-from-right-full fade-in duration-500">
           <div className="bg-[#0b1222] text-white px-6 py-4 rounded-[1.5rem] shadow-2xl border border-emerald-500/30 flex items-center gap-4">
-            <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
-              <CheckCircle2 className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-widest leading-none mb-1">Update Dispatched</p>
-              <p className="text-[9px] font-bold text-emerald-400 uppercase tracking-tighter">{feedbackMsg}</p>
-            </div>
+            <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg"><CheckCircle2 className="w-6 h-6 text-white" /></div>
+            <div><p className="text-[11px] font-black uppercase tracking-widest mb-1">Status Update</p><p className="text-[9px] font-bold text-emerald-400 uppercase tracking-tighter">{feedbackMsg}</p></div>
           </div>
         </div>
       )}
-
-      {/* Sidebar Navigation */}
-      <div className="w-full md:w-64 shrink-0 space-y-2">
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-6">
-          <div className="pb-6 border-b border-slate-50">
-            <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4">Management Console</p>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-black text-white text-xs">
-                {user.name.charAt(0)}
-              </div>
-              <div className="overflow-hidden">
-                <p className="text-xs font-black text-slate-900 truncate">{user.name}</p>
-                <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1">
-                  Supervisor 
-                  <span className="text-slate-300 mx-0.5">•</span> 
-                  <span className="truncate">{user.department}</span>
-                </p>
-              </div>
-            </div>
+      <div className="w-full md:w-64 shrink-0 space-y-4">
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
+          <div className="pb-6 border-b border-slate-50 flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg">{user.name.charAt(0)}</div>
+            <div><p className="text-xs font-black text-slate-900">{user.name}</p><p className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Supervisor</p></div>
           </div>
-
-          <nav className="space-y-1">
-            <button 
-              onClick={() => setCurrentPage('dashboard')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentPage === 'dashboard' ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'}`}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              Team Dashboard
-            </button>
-            <button 
-              onClick={() => setCurrentPage('queue')}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentPage === 'queue' ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'}`}
-            >
-              <div className="flex items-center gap-3">
-                <ListTodo className="w-4 h-4" />
-                KPI Queue
-              </div>
-              {pendingTransmissions.length > 0 && (
-                <span className="bg-blue-600 text-white px-1.5 py-0.5 rounded text-[8px]">{pendingTransmissions.length}</span>
-              )}
-            </button>
-            <button 
-              onClick={() => setCurrentPage('reports')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentPage === 'reports' ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'}`}
-            >
-              <FileText className="w-4 h-4" />
-              Team Reports
-            </button>
+          <nav className="space-y-2">
+            {[
+              { id: 'dashboard', label: 'Main Command', icon: LayoutDashboard },
+              { id: 'queue', label: 'Submissions', icon: ListTodo, badge: pendingTransmissions.length },
+              { id: 'team', label: 'Unit Matrix', icon: Users }
+            ].map(item => (
+              <button 
+                key={item.id} 
+                onClick={() => setCurrentPage(item.id as Page)} 
+                className={`w-full flex items-center justify-between px-5 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${currentPage === item.id ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'}`}
+              >
+                <div className="flex items-center gap-3"><item.icon className="w-4 h-4" /> {item.label}</div>
+                {item.badge ? <span className="bg-blue-600 text-white px-1.5 py-0.5 rounded-md text-[8px]">{item.badge}</span> : null}
+              </button>
+            ))}
           </nav>
         </div>
-
-        <div className="bg-slate-900 p-6 rounded-[2rem] text-white">
-          <div className="flex items-center gap-3 mb-4">
-            <Shield className="w-4 h-4 text-blue-400" />
-            <p className="text-[9px] font-black uppercase tracking-widest">Audit Mode</p>
-          </div>
-          <p className="text-[10px] font-bold text-slate-400 leading-relaxed uppercase tracking-tighter">
-            Actions are logged for {user.department} transparency records.
-          </p>
-        </div>
       </div>
-
-      {/* Main Content Area */}
       <div className="flex-grow">
-        <header className="mb-8 space-y-1">
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">
-            {currentPage === 'dashboard' && 'Operational Overview'}
-            {currentPage === 'queue' && 'Submissions Processing'}
-            {currentPage === 'validation' && 'Control Terminal'}
-            {currentPage === 'reports' && 'Strategic Analytics'}
-          </h1>
-          <p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.3em]">
-            {user.department} Unit Control
-          </p>
-        </header>
-
-        {currentPage === 'dashboard' && renderDashboard()}
-        {currentPage === 'queue' && renderQueue()}
-        {currentPage === 'validation' && renderValidation()}
-        {currentPage === 'reports' && renderReports()}
+        <header className="mb-8 space-y-1"><h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">{currentPage === 'dashboard' ? 'Unit Overview' : currentPage === 'queue' ? 'Queue Management' : 'Secure Terminal'}</h1><p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.3em]">{user.department} Controller Node</p></header>
+        {currentView()}
       </div>
     </div>
   );
