@@ -10,6 +10,7 @@ interface Props {
   user: User;
   validatedStats?: SystemStats;
   pendingTransmissions: Transmission[];
+  transmissionHistory: Transmission[];
   announcements: Announcement[];
   onTransmit: (t: Transmission) => void;
 }

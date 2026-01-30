@@ -4,13 +4,14 @@ import {
   Activity, CheckCircle2, Clock, Briefcase, MapPin, HardHat, AlertTriangle, 
   FileCheck, ChevronRight, Info, ChevronLeft, FileText, ShieldCheck, Zap, 
   CheckCircle, Wrench, Upload, ChevronDown, Calendar, Paperclip, FileImage, 
-  File as FileIcon, X, Eye, Trophy, Target, TrendingUp, AlertCircle
+  File as FileIcon, X, Eye, Trophy, Target, TrendingUp, AlertCircle, Megaphone, Sparkles
 } from 'lucide-react';
 
 interface Props {
   user: User;
   validatedStats?: SystemStats;
   pendingTransmissions: Transmission[];
+  transmissionHistory: Transmission[];
   announcements: Announcement[];
   onTransmit: (t: Transmission) => void;
 }
@@ -23,7 +24,40 @@ const CLASSIFICATIONS = [
   { name: 'Site Survey', description: 'Environmental and structural analysis for prospective expansion.' }
 ];
 
-const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTransmissions, announcements, onTransmit }) => {
+const CHECKLIST_CONTENT: Record<string, string[]> = {
+  'Installation': [
+    'Hardware Mounting Secure',
+    'Cable Routing Compliance',
+    'Initial Power-On Test',
+    'Signal Strength Validation'
+  ],
+  'Preventive Maintenance': [
+    'Voltage Levels Verified',
+    'Connectivity Stability Check',
+    'Firmware Integrity Audit',
+    'Physical Wear Inspection'
+  ],
+  'Reactive Repair': [
+    'Fault Root Cause Identified',
+    'Component Replacement Done',
+    'Functional Restoration Test',
+    'Worksite Hazard Clearance'
+  ],
+  'Emergency Response': [
+    'Critical System Bypass',
+    'Emergency Power Restoration',
+    'Secure Data Recovery Init',
+    'Incident Severity Logged'
+  ],
+  'Site Survey': [
+    'Structural Dimension Audit',
+    'Signal Obstruction Check',
+    'Power Source Availability',
+    'Environmental Risk Analysis'
+  ]
+};
+
+const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTransmissions, transmissionHistory, announcements, onTransmit }) => {
   const [activeStep, setActiveStep] = useState(1);
   const [isTransmitting, setIsTransmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -38,11 +72,11 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTran
     systemStatus: 'Operational',
     projectReport: '', 
     attachments: [] as { name: string, type: string, size: string }[], 
-    pmChecklist: { voltageChecked: false, connectivityVerified: false, firmwareUpdated: false, physicalInspection: false } as Record<string, boolean>,
+    pmChecklist: { task1: false, task2: false, task3: false, task4: false } as Record<string, boolean>,
   });
 
   const isStep1Complete = formData.jobId && formData.clientSite && formData.startTime && formData.endTime;
-  const isStep2Complete = Object.values(formData.pmChecklist).some(v => v);
+  const isStep2Complete = Object.values(formData.pmChecklist).every(v => v); // All mandatory for ISO compliance
   const isStep3Complete = formData.projectReport.length > 20 && formData.attachments.length > 0;
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,7 +118,7 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTran
       setFormData({
         jobId: '', clientSite: '', jobType: 'Installation', startTime: '', endTime: '',
         systemStatus: 'Operational', projectReport: '', attachments: [],
-        pmChecklist: { voltageChecked: false, connectivityVerified: false, firmwareUpdated: false, physicalInspection: false } as Record<string, boolean>,
+        pmChecklist: { task1: false, task2: false, task3: false, task4: false } as Record<string, boolean>,
       });
       setTimeout(() => setShowSuccess(false), 4000);
     }, 2000);
@@ -94,6 +128,13 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTran
   const hasUserPending = useMemo(() => 
     pendingTransmissions.some(t => t.userId === user.id), 
   [pendingTransmissions, user.id]);
+
+  // Personal Submission List Logic
+  const mySubmissions = useMemo(() => {
+    const pending = pendingTransmissions.filter(t => t.userId === user.id);
+    const history = transmissionHistory.filter(t => t.userId === user.id);
+    return [...pending, ...history].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [pendingTransmissions, transmissionHistory, user.id]);
   
   const isValidated = !!validatedStats?.ratings;
   const score = validatedStats?.ratings?.finalScore || 0;
@@ -101,6 +142,29 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTran
   const incentivePay = user.incentiveTarget * incentivePct;
   const dash = 251.2; // Circumference for r=40
   const offset = dash - (dash * (score / 100));
+
+  const systemSuggestion = useMemo(() => {
+    if (!isValidated || !validatedStats?.ratings) return null;
+    const { performance, proficiency, professionalism } = validatedStats.ratings;
+    const scores = [
+      { name: 'Performance', val: performance, suggest: "Focus on reducing field response times and optimizing task execution speed to boost efficiency metrics." },
+      { name: 'Proficiency', val: proficiency, suggest: "Request advanced node calibration training to improve technical execution accuracy and system health checks." },
+      { name: 'Professionalism', val: professionalism, suggest: "Ensure all operational logs include high-fidelity proof-of-work and strictly adhere to ISO documentation standards." }
+    ];
+    const lowest = scores.sort((a, b) => a.val - b.val)[0];
+    if (lowest.val >= 4.5) return "Exceptional performance metrics detected. Maintain current standards of technical excellence.";
+    return lowest.suggest;
+  }, [isValidated, validatedStats]);
+
+  const deptAnnouncements = useMemo(() => {
+    return announcements
+      .filter(a => a.department === user.department)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [announcements, user.department]);
+
+  const currentChecklistLabels = useMemo(() => {
+    return CHECKLIST_CONTENT[formData.jobType] || CHECKLIST_CONTENT['Installation'];
+  }, [formData.jobType]);
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-12 animate-in fade-in duration-700">
@@ -128,12 +192,10 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTran
         </div>
       </div>
 
-      {/* Permanently Visible Performance Scorecard Row */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in zoom-in-95 duration-700">
         <div className="lg:col-span-12 bg-white rounded-[3rem] p-10 border border-slate-100 shadow-xl relative overflow-hidden flex flex-col md:flex-row items-center gap-12">
           <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-[80px] -mr-32 -mt-32"></div>
           
-          {/* SVG Progress Circle Container */}
           <div className="relative shrink-0 flex flex-col items-center">
              <svg className="w-48 h-48" viewBox="0 0 100 100">
                <circle cx="50" cy="50" r="40" fill="none" stroke="#f1f5f9" strokeWidth="10" />
@@ -178,8 +240,16 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTran
               <Trophy className={`w-8 h-8 ${isValidated ? 'text-amber-500' : 'text-slate-200'}`} />
               <div>
                 <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Performance Scorecard</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  {isValidated ? 'Validated by Supervisor Registry' : hasUserPending ? 'Currently Under Hierarchy Review' : 'Waiting for Initial Transmission'}
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
+                  {isValidated ? (
+                    <span className="flex flex-wrap items-center gap-x-2">
+                      <span className="text-emerald-500">Validated by Supervisor Registry</span>
+                      <span className="w-1.5 h-1.5 bg-slate-200 rounded-full hidden md:block"></span>
+                      <span className="text-blue-600 flex items-center gap-1 normal-case font-semibold italic tracking-normal">
+                        <Sparkles className="w-3 h-3" /> AI 2000: {systemSuggestion}
+                      </span>
+                    </span>
+                  ) : hasUserPending ? 'Currently Under Hierarchy Review' : 'Waiting for Initial Transmission'}
                 </p>
               </div>
             </div>
@@ -274,7 +344,7 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTran
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {CLASSIFICATIONS.map(c => (
                         <div key={c.name} className="relative group">
-                          <button onClick={() => setFormData({...formData, jobType: c.name})} className={`w-full text-left px-5 py-4 border rounded-[1.5rem] font-bold text-xs transition-all flex justify-between items-center ${formData.jobType === c.name ? 'bg-slate-900 text-white border-slate-900 shadow-xl' : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-white hover:border-blue-500 hover:shadow-md'}`}>
+                          <button onClick={() => setFormData({...formData, jobType: c.name, pmChecklist: { task1: false, task2: false, task3: false, task4: false }})} className={`w-full text-left px-5 py-4 border rounded-[1.5rem] font-bold text-xs transition-all flex justify-between items-center ${formData.jobType === c.name ? 'bg-slate-900 text-white border-slate-900 shadow-xl' : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-white hover:border-blue-500 hover:shadow-md'}`}>
                             <span className="uppercase tracking-tight truncate pr-2">{c.name}</span><Info className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                           </button>
                         </div>
@@ -290,22 +360,26 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTran
               {activeStep === 2 && (
                 <div className="space-y-8 animate-in slide-in-from-left-4 fade-in duration-500">
                   <div className="p-10 bg-blue-50/50 border border-blue-100 rounded-[2.5rem] space-y-6">
-                    <div className="flex items-center gap-4"><div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg"><Wrench className="w-6 h-6 text-white" /></div><div><h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Technical Checklist</h3><p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Mandatory Verification</p></div></div>
+                    <div className="flex items-center gap-4"><div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg"><Wrench className="w-6 h-6 text-white" /></div><div><h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Service Verification</h3><p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Mandatory Tasks for {formData.jobType}</p></div></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {Object.entries(formData.pmChecklist).map(([key, value]) => (
-                        <label key={key} className={`flex items-center gap-4 cursor-pointer p-4 rounded-2xl border transition-all ${value ? 'bg-white border-blue-200 shadow-sm' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}>
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${value ? 'bg-blue-600 text-white' : 'bg-white border-2 border-slate-200'}`}>{value && <CheckCircle className="w-4 h-4" />}</div>
-                          <input type="checkbox" className="hidden" checked={value} onChange={e => setFormData({...formData, pmChecklist: {...formData.pmChecklist, [key]: e.target.checked}})} />
-                          <span className="text-xs font-black text-slate-600 uppercase tracking-widest">{key.replace(/([A-Z])/g, ' $1')}</span>
-                        </label>
-                      ))}
+                      {currentChecklistLabels.map((label, idx) => {
+                        const key = `task${idx + 1}`;
+                        const value = formData.pmChecklist[key];
+                        return (
+                          <label key={key} className={`flex items-center gap-4 cursor-pointer p-4 rounded-2xl border transition-all ${value ? 'bg-white border-blue-200 shadow-sm' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}>
+                            <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${value ? 'bg-blue-600 text-white' : 'bg-white border-2 border-slate-200'}`}>{value && <CheckCircle className="w-4 h-4" />}</div>
+                            <input type="checkbox" className="hidden" checked={value} onChange={e => setFormData({...formData, pmChecklist: {...formData.pmChecklist, [key]: e.target.checked}})} />
+                            <span className="text-xs font-black text-slate-600 uppercase tracking-widest">{label}</span>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
                   <div className="space-y-4">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Final Node Health</label>
                     <div className="flex gap-4">
                       {['Operational', 'Degraded', 'Critical'].map(status => (
-                        <button key={status} onClick={() => setFormData({...formData, systemStatus: status})} className={`flex-1 py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${formData.systemStatus === status ? 'bg-slate-900 text-white shadow-xl' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>{status}</button>
+                        <button key={status} onClick={() => setFormData({...formData, systemStatus: status})} className={`flex-1 py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${formData.systemStatus === status ? 'bg-slate-900 text-white shadow-xl' : 'bg-slate-50 text-slate-600 border border-slate-100 hover:bg-white hover:border-blue-500 hover:shadow-md'}`}>{status}</button>
                       ))}
                     </div>
                   </div>
@@ -358,14 +432,65 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTran
         </div>
         
         <div className="lg:col-span-4 space-y-6">
-          <div className="bg-[#0b1222] rounded-[3rem] p-10 h-full shadow-2xl text-white relative overflow-hidden flex flex-col items-center justify-center text-center">
+          <div className="bg-[#0b1222] rounded-[3rem] p-10 h-full shadow-2xl text-white relative overflow-hidden flex flex-col items-center">
             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 blur-[100px] rounded-full -mr-32 -mt-32"></div>
-            <Activity className="w-16 h-16 text-blue-500 mb-8 animate-pulse" />
-            <h3 className="text-2xl font-black uppercase tracking-widest mb-2">Node Registry</h3>
-            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em] max-w-[200px] mx-auto leading-relaxed italic">AA2000 Operational Integrity Framework.</p>
-            <div className="mt-12 w-full space-y-3">
-               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex justify-between items-center"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Submission Health</p><p className="text-xl font-black text-blue-400 tracking-tight">STABLE</p></div>
-               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex justify-between items-center"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">ISO-9001 Compliance</p><p className={`text-xl font-black tracking-tight ${formData.attachments.length > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{formData.attachments.length > 0 ? 'CERTIFIED' : 'WAITING'}</p></div>
+            <Megaphone className="w-16 h-16 text-blue-500 mb-8 animate-pulse" />
+            <h3 className="text-2xl font-black uppercase tracking-widest mb-2">Unit Broadcast</h3>
+            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em] mb-12 italic">Supervisor Directives</p>
+            
+            <div className="w-full flex-grow overflow-y-auto custom-scrollbar pr-1 max-h-[300px]">
+              {deptAnnouncements.length === 0 ? (
+                <div className="text-center py-10 opacity-30 border-2 border-dashed border-white/10 rounded-3xl">
+                  <p className="text-[10px] font-black uppercase tracking-widest">No active directives found.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {deptAnnouncements.map(ann => (
+                    <div key={ann.id} className="bg-white/5 border border-white/10 rounded-[2rem] p-6 space-y-3 hover:bg-white/10 transition-colors">
+                      <p className="text-sm font-medium text-slate-300 leading-relaxed italic">"{ann.message}"</p>
+                      <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                        <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">{ann.senderName}</span>
+                        <span className="text-[8px] font-bold text-slate-500 uppercase">{new Date(ann.timestamp).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 w-full space-y-3 pt-6 border-t border-white/5">
+               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col gap-4">
+                  <div className="flex justify-between items-center">
+                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">My Log History</p>
+                     <span className="text-[8px] font-black bg-blue-600 px-1.5 py-0.5 rounded uppercase">{mySubmissions.length} Entries</span>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto custom-scrollbar pr-1 space-y-2">
+                     {mySubmissions.length === 0 ? (
+                       <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest text-center py-4">No submissions recorded.</p>
+                     ) : (
+                       mySubmissions.map(sub => (
+                         <div key={sub.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                            <div className="overflow-hidden pr-2">
+                               <p className="text-[9px] font-black text-blue-400 truncate uppercase tracking-tight">{sub.id}</p>
+                               <p className="text-[7px] font-bold text-slate-500 uppercase">{new Date(sub.timestamp).toLocaleDateString()}</p>
+                               {sub.supervisorComment && (
+                                 <p className="text-[7px] text-slate-400 italic mt-1 line-clamp-2 leading-tight">
+                                   "{sub.supervisorComment}"
+                                 </p>
+                               )}
+                            </div>
+                            <span className={`shrink-0 text-[7px] font-black px-1.5 py-0.5 rounded uppercase shadow-sm h-fit ${
+                              sub.status === 'rejected' ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 
+                              sub.status === 'validated' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 
+                              'bg-blue-500/20 text-blue-400 border border-blue-500/20'
+                            }`}>
+                              {sub.status || 'Pending'}
+                            </span>
+                         </div>
+                       ))
+                     )}
+                  </div>
+               </div>
             </div>
           </div>
         </div>

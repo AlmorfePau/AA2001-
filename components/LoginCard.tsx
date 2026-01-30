@@ -17,8 +17,8 @@ const ROLE_FINANCIALS: Record<UserRole, { base: number; target: number }> = {
 };
 
 const SORTED_ROLES = [
-  UserRole.EXECUTIVE,
   UserRole.ADMIN,
+  UserRole.EXECUTIVE,
   UserRole.DEPT_HEAD,
   UserRole.SUPERVISOR,
   UserRole.EMPLOYEE,
@@ -29,7 +29,7 @@ const ADMIN_IDENTITY = "Paulo Almorfe";
 const ADMIN_PASSKEY = "123";
 
 const LoginCard: React.FC<LoginCardProps> = ({ onLogin, onAddAuditEntry }) => {
-  const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.EXECUTIVE);
+  const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.ADMIN);
   const [name, setName] = useState('');
   const [passkey, setPasskey] = useState('');
   const [isLoading, setIsLoading] = useState(false);

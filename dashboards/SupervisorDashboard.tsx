@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, Transmission, SystemStats, Announcement } from '../types';
 import { 
@@ -34,14 +33,17 @@ import {
   File as FileIcon,
   Download,
   Target,
-  Trophy
+  Trophy,
+  User as UserIcon,
+  Cpu
 } from 'lucide-react';
 
 interface Props {
   user: User;
   pendingTransmissions: Transmission[];
+  transmissionHistory: Transmission[];
   announcements: Announcement[];
-  onValidate: (id: string, overrides?: any) => void;
+  onValidate: (id: string, overrides?: any, status?: 'validated' | 'rejected') => void;
   onAddAuditEntry: (action: string, details: string, type?: 'INFO' | 'OK' | 'WARN', userName?: string) => void;
   onPostAnnouncement: (message: string) => void;
   onDeleteAnnouncement: (id: string) => void;
@@ -52,6 +54,7 @@ type Page = 'dashboard' | 'queue' | 'validation' | 'team' | 'reports';
 const SupervisorDashboard: React.FC<Props> = ({ 
   user, 
   pendingTransmissions, 
+  transmissionHistory,
   announcements,
   onValidate, 
   onAddAuditEntry,
@@ -60,8 +63,9 @@ const SupervisorDashboard: React.FC<Props> = ({
 }) => {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [selectedItem, setSelectedItem] = useState<Transmission | null>(null);
-  const [reviewFlaggedOnly, setReviewFlaggedOnly] = useState(false);
   const [announcementMsg, setAnnouncementMsg] = useState('');
+  const [queueTab, setQueueTab] = useState<'pending' | 'history' | 'rejected'>('pending');
+  const [isReadOnly, setIsReadOnly] = useState(false);
   
   // Validation/Override State
   const [overrides, setOverrides] = useState<any>(null);
@@ -111,14 +115,46 @@ const SupervisorDashboard: React.FC<Props> = ({
   };
 
   const filteredQueue = useMemo(() => {
-    if (reviewFlaggedOnly) {
-      return pendingTransmissions.filter(isFlagged);
+    if (queueTab === 'history') {
+      return transmissionHistory.filter(t => {
+        const regRaw = localStorage.getItem('aa2001_credential_registry');
+        if (!regRaw) return false;
+        const reg = JSON.parse(regRaw);
+        const matched = reg.find((u: any) => u.name === t.userName);
+        return matched?.department === user.department && (!t.status || t.status === 'validated');
+      });
+    }
+    if (queueTab === 'rejected') {
+      return transmissionHistory.filter(t => {
+        const regRaw = localStorage.getItem('aa2001_credential_registry');
+        if (!regRaw) return false;
+        const reg = JSON.parse(regRaw);
+        const matched = reg.find((u: any) => u.name === t.userName);
+        return matched?.department === user.department && t.status === 'rejected';
+      });
     }
     return pendingTransmissions;
-  }, [pendingTransmissions, reviewFlaggedOnly]);
+  }, [pendingTransmissions, transmissionHistory, queueTab, user.department]);
 
-  const handleOpenValidation = (item: Transmission) => {
+  // Combine and sort team members: Supervisor (current user) always on top
+  const sortedTeam = useMemo(() => {
+    const others = deptMembers.filter(m => m.name !== user.name);
+    return [
+      { 
+        name: user.name, 
+        role: user.role, 
+        isOnline: true, 
+        isSupervisor: true,
+        id: user.id,
+        department: user.department
+      }, 
+      ...others
+    ];
+  }, [deptMembers, user]);
+
+  const handleOpenValidation = (item: Transmission, readOnly: boolean = false) => {
     setSelectedItem(item);
+    setIsReadOnly(readOnly);
     setOverrides({
       responseTime: item.responseTime,
       accuracy: item.accuracy,
@@ -128,8 +164,18 @@ const SupervisorDashboard: React.FC<Props> = ({
       jobType: item.jobType,
       systemStatus: item.systemStatus
     });
-    setGrading({ performance: 5, proficiency: 5, professionalism: 5 });
-    setOverrideReason('');
+    
+    if (item.ratings) {
+      setGrading({
+        performance: item.ratings.performance,
+        proficiency: item.ratings.proficiency,
+        professionalism: item.ratings.professionalism
+      });
+    } else {
+      setGrading({ performance: 5, proficiency: 5, professionalism: 5 });
+    }
+    
+    setOverrideReason(item.supervisorComment || '');
     setCurrentPage('validation');
   };
 
@@ -149,9 +195,9 @@ const SupervisorDashboard: React.FC<Props> = ({
   }, [grading]);
 
   const handleAction = (type: 'APPROVE' | 'REJECT' | 'OVERRIDE') => {
-    if (!selectedItem) return;
-    if (type === 'OVERRIDE' && !overrideReason.trim()) {
-      alert("MANDATORY: Provide a reason for manual data override.");
+    if (!selectedItem || isReadOnly) return;
+    if ((type === 'OVERRIDE' || type === 'REJECT') && !overrideReason.trim()) {
+      alert(`MANDATORY: Provide a justification for ${type === 'REJECT' ? 'rejection' : 'manual data override'}.`);
       return;
     }
 
@@ -163,15 +209,23 @@ const SupervisorDashboard: React.FC<Props> = ({
 
     if (type === 'REJECT') {
       onAddAuditEntry('KPI_REJECTED', `Supervisor rejected submission ${selectedItem.id}.`, 'WARN');
-      onValidate(selectedItem.id); 
+      // Pass the current stats along with the comment during rejection to maintain log integrity
+      const rejectionOverrides = {
+        responseTime: selectedItem.responseTime,
+        accuracy: selectedItem.accuracy,
+        uptime: selectedItem.uptime,
+        supervisorComment: overrideReason.trim()
+      };
+      onValidate(selectedItem.id, rejectionOverrides, 'rejected'); 
       setFeedbackMsg(`Submission rejected.`);
     } else {
       const statsOverrides = {
         ...(overrides || {}),
-        ratings
+        ratings,
+        supervisorComment: overrideReason.trim()
       };
       onAddAuditEntry('KPI_APPROVED', `Supervisor validated and graded submission ${selectedItem.id}. Score: ${calculatedScore.final}%`, 'OK');
-      onValidate(selectedItem.id, statsOverrides);
+      onValidate(selectedItem.id, statsOverrides, 'validated');
       setFeedbackMsg(`Submission validated and graded.`);
     }
 
@@ -181,7 +235,6 @@ const SupervisorDashboard: React.FC<Props> = ({
     setSelectedItem(null);
   };
 
-  // Fix: Added missing handleDispatchAnnouncement function
   const handleDispatchAnnouncement = () => {
     if (announcementMsg.trim()) {
       onPostAnnouncement(announcementMsg.trim());
@@ -189,7 +242,6 @@ const SupervisorDashboard: React.FC<Props> = ({
     }
   };
 
-  // Fix: Added missing handleDeleteBroadcast function
   const handleDeleteBroadcast = (id: string) => {
     onDeleteAnnouncement(id);
   };
@@ -286,24 +338,115 @@ const SupervisorDashboard: React.FC<Props> = ({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-[2rem] border border-slate-100">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center"><ListTodo className="w-5 h-5 text-white" /></div>
-          <div><h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Submissions Queue</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pending Review</p></div>
+          <div><h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Submissions Registry</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{queueTab === 'pending' ? 'Pending Review' : queueTab === 'history' ? 'Validated Records' : 'Rejected Records'}</p></div>
         </div>
-        <div className="flex items-center gap-3">
-          <div onClick={() => setReviewFlaggedOnly(!reviewFlaggedOnly)} className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${reviewFlaggedOnly ? 'bg-amber-500' : 'bg-slate-200'}`}><div className={`w-4 h-4 bg-white rounded-full transition-transform ${reviewFlaggedOnly ? 'translate-x-6' : 'translate-x-0'}`} /></div>
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Review Flagged Only</span>
+        <div className="flex items-center gap-6">
+          <div className="flex bg-slate-100 p-1 rounded-xl">
+            <button 
+              onClick={() => setQueueTab('pending')}
+              className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${queueTab === 'pending' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Pending
+            </button>
+            <button 
+              onClick={() => setQueueTab('history')}
+              className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${queueTab === 'history' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Validated
+            </button>
+            <button 
+              onClick={() => setQueueTab('rejected')}
+              className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${queueTab === 'rejected' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Rejected
+            </button>
+          </div>
         </div>
       </div>
       <div className="space-y-3">
-        {filteredQueue.map(item => (
-          <div key={item.id} className="group flex items-center justify-between p-6 bg-white rounded-[2rem] border border-slate-50 hover:shadow-md transition-all">
-            <div className="flex items-center gap-6">
-              <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-slate-600">{item.userName.charAt(0)}</div>
-              <div>
-                <div className="flex items-center gap-2"><p className="text-sm font-black text-slate-900">{item.userName}</p>{isFlagged(item) && <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[8px] font-black rounded border border-amber-100">FLAGGED</span>}</div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">TX ID: {item.id} • {item.jobId}</p>
+        {filteredQueue.length === 0 ? (
+          <div className="py-20 text-center bg-white rounded-[2rem] border border-slate-50 border-dashed">
+            <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-4"><ClipboardCheck className="w-8 h-8 text-slate-200" /></div>
+            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Registry empty for current selection</p>
+          </div>
+        ) : (
+          filteredQueue.map(item => (
+            <div key={item.id} className="group flex items-center justify-between p-6 bg-white rounded-[2rem] border border-slate-50 hover:shadow-md transition-all">
+              <div className="flex items-center gap-6">
+                <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-slate-600">{item.userName.charAt(0)}</div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-black text-slate-900">{item.userName}</p>
+                    {queueTab === 'pending' && isFlagged(item) && <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[8px] font-black rounded border border-amber-100">FLAGGED</span>}
+                    {queueTab === 'history' && <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[8px] font-black rounded border border-emerald-100 uppercase">ARCHIVED</span>}
+                    {queueTab === 'rejected' && <span className="px-2 py-0.5 bg-red-50 text-red-600 text-[8px] font-black rounded border border-red-100 uppercase">REJECTED</span>}
+                  </div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">TX ID: {item.id} • {item.jobId}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                {queueTab === 'history' && item.ratings && (
+                  <div className="px-4 py-2 bg-slate-50 rounded-xl flex items-center gap-3 border border-slate-100">
+                    <div className="text-right">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Final Score</p>
+                      <p className="text-xs font-black text-slate-900 leading-none">{item.ratings.finalScore}%</p>
+                    </div>
+                  </div>
+                )}
+                <button onClick={() => handleOpenValidation(item, queueTab === 'history' || queueTab === 'rejected')} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all">
+                  {queueTab !== 'pending' ? 'View Record' : 'Validate'} <Eye className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
-            <button onClick={() => handleOpenValidation(item)} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all">Validate <Eye className="w-3.5 h-3.5" /></button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  const renderTeam = () => (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-[2rem] border border-slate-100">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center"><Users className="w-5 h-5 text-white" /></div>
+          <div><h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Unit Matrix</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Operational Personnel Status</p></div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
+            <span className="text-[9px] font-black uppercase tracking-widest">{sortedTeam.length} Nodes Registered</span>
+          </div>
+        </div>
+      </div>
+      <div className="space-y-3">
+        {sortedTeam.map((member, idx) => (
+          <div key={idx} className={`group flex items-center justify-between p-6 bg-white rounded-[2rem] border transition-all ${member.isSupervisor ? 'border-blue-200 shadow-sm shadow-blue-50' : 'border-slate-50 hover:shadow-md'}`}>
+            <div className="flex items-center gap-6">
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black transition-colors ${member.isSupervisor ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {member.name.charAt(0)}
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-black text-slate-900">{member.name}</p>
+                  {member.isSupervisor && <span className="px-2 py-0.5 bg-blue-600 text-white text-[8px] font-black rounded uppercase">SUPERVISOR</span>}
+                  {member.name === user.name && !member.isSupervisor && <span className="px-2 py-0.5 bg-slate-100 text-slate-400 text-[8px] font-black rounded uppercase">YOU</span>}
+                </div>
+                <div className="flex items-center gap-4">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{member.role} • {member.department}</p>
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-1.5 h-1.5 rounded-full ${member.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></div>
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{member.isOnline ? 'Active' : 'Standby'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+               <button className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-all">
+                 <Shield className="w-4 h-4" />
+               </button>
+               <button className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-all">
+                 <Cpu className="w-4 h-4" />
+               </button>
+            </div>
           </div>
         ))}
       </div>
@@ -318,8 +461,17 @@ const SupervisorDashboard: React.FC<Props> = ({
           <div className="p-10 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
             <div className="flex items-center gap-6">
               <button onClick={() => setCurrentPage('queue')} className="p-3 text-slate-400 hover:text-slate-900 hover:bg-white rounded-xl shadow-sm"><X className="w-5 h-5" /></button>
-              <div><h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Technical Review Terminal</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Node ID: {selectedItem.id}</p></div>
+              <div>
+                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">{isReadOnly ? (selectedItem.status === 'rejected' ? 'Rejected Record Terminal' : 'Archived Record Terminal') : 'Technical Review Terminal'}</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Node ID: {selectedItem.id}</p>
+              </div>
             </div>
+            {isReadOnly && (
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${selectedItem.status === 'rejected' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
+                {selectedItem.status === 'rejected' ? <X className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                <span className="text-[9px] font-black uppercase tracking-widest">{selectedItem.status === 'rejected' ? 'Rejected Record' : 'Validated Record'}</span>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 p-10">
@@ -327,8 +479,8 @@ const SupervisorDashboard: React.FC<Props> = ({
               <div className="space-y-6">
                 <div className="flex items-center gap-3"><div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center"><Settings className="w-4 h-4 text-white" /></div><p className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Core Metadata Review</p></div>
                 <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Job ID</label><input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold text-sm" value={overrides.jobId} onChange={e => setOverrides({...overrides, jobId: e.target.value})} /></div>
-                  <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client Site</label><input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold text-sm" value={overrides.clientSite} onChange={e => setOverrides({...overrides, clientSite: e.target.value})} /></div>
+                  <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Job ID</label><input type="text" readOnly={isReadOnly} className={`w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold text-sm ${isReadOnly ? 'opacity-70' : ''}`} value={overrides.jobId} onChange={e => setOverrides({...overrides, jobId: e.target.value})} /></div>
+                  <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client Site</label><input type="text" readOnly={isReadOnly} className={`w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold text-sm ${isReadOnly ? 'opacity-70' : ''}`} value={overrides.clientSite} onChange={e => setOverrides({...overrides, clientSite: e.target.value})} /></div>
                 </div>
               </div>
 
@@ -383,8 +535,9 @@ const SupervisorDashboard: React.FC<Props> = ({
                         {[1, 2, 3, 4, 5].map(val => (
                           <button 
                             key={val} 
+                            disabled={isReadOnly}
                             onClick={() => setGrading({...grading, [cat.key]: val})}
-                            className={`flex-1 h-2 rounded-full transition-all ${val <= (grading as any)[cat.key] ? 'bg-blue-600' : 'bg-white/10'}`}
+                            className={`flex-1 h-2 rounded-full transition-all ${val <= (grading as any)[cat.key] ? 'bg-blue-600' : 'bg-white/10'} ${isReadOnly ? 'cursor-default' : ''}`}
                           ></button>
                         ))}
                       </div>
@@ -394,25 +547,32 @@ const SupervisorDashboard: React.FC<Props> = ({
 
                 <div className="mt-12 pt-10 border-t border-white/5 space-y-6">
                   <div className="flex justify-between items-end">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Predicted Score</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Recorded Score</p>
                     <p className="text-5xl font-black text-emerald-400 tracking-tighter">{calculatedScore.final}%</p>
                   </div>
                   <div className="bg-white/5 rounded-2xl p-6 flex justify-between items-center border border-white/10">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Incentive Status</p>
-                    <p className="text-sm font-black text-blue-400 uppercase tracking-tight">Eligible: {calculatedScore.incentivePct * 100}%</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Incentive Yield</p>
+                    <p className="text-sm font-black text-blue-400 uppercase tracking-tight">{calculatedScore.incentivePct * 100}% Applied</p>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Supervisor Justification</p>
-                 <textarea className="w-full bg-slate-50 rounded-2xl p-6 text-sm font-medium outline-none min-h-[100px] border border-slate-200" placeholder="Required for overriding or rejecting..." value={overrideReason} onChange={e => setOverrideReason(e.target.value)} />
-              </div>
+              {!isReadOnly && (
+                <>
+                  <div className="space-y-4">
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Supervisor Justification</p>
+                     <textarea className="w-full bg-slate-50 rounded-2xl p-6 text-sm font-medium outline-none min-h-[100px] border border-slate-200" placeholder="Required for overriding or rejecting..." value={overrideReason} onChange={e => setOverrideReason(e.target.value)} />
+                  </div>
 
-              <div className="grid grid-cols-1 gap-4">
-                <button onClick={() => handleAction('APPROVE')} className="w-full py-5 bg-emerald-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-3"><CheckCircle2 className="w-4 h-4" /> Finalize Validation</button>
-                <button onClick={() => handleAction('REJECT')} className="w-full py-5 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:bg-slate-800 transition-all">Reject Submission</button>
-              </div>
+                  <div className="grid grid-cols-1 gap-4">
+                    <button onClick={() => handleAction('APPROVE')} className="w-full py-5 bg-emerald-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-3"><CheckCircle2 className="w-4 h-4" /> Finalize Validation</button>
+                    <button onClick={() => handleAction('REJECT')} className="w-full py-5 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:bg-slate-800 transition-all">Reject Submission</button>
+                  </div>
+                </>
+              )}
+              {isReadOnly && (
+                <button onClick={() => setCurrentPage('queue')} className="w-full py-5 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all">Return to Registry</button>
+              )}
             </div>
           </div>
         </div>
@@ -424,8 +584,9 @@ const SupervisorDashboard: React.FC<Props> = ({
     switch (currentPage) {
       case 'dashboard': return renderDashboard();
       case 'queue': return renderQueue();
+      case 'team': return renderTeam();
       case 'validation': return renderValidation();
-      case 'team': return <div className="p-20 text-center text-slate-400 text-xs font-black uppercase tracking-widest">Team Matrix Module Operational</div>;
+      case 'reports': return <div className="p-20 text-center text-slate-400 text-xs font-black uppercase tracking-widest">Reports Module Operational</div>;
       default: return renderDashboard();
     }
   };
@@ -449,12 +610,15 @@ const SupervisorDashboard: React.FC<Props> = ({
           <nav className="space-y-2">
             {[
               { id: 'dashboard', label: 'Main Command', icon: LayoutDashboard },
-              { id: 'queue', label: 'Submissions', icon: ListTodo, badge: pendingTransmissions.length },
+              { id: 'queue', label: 'Registry', icon: ListTodo, badge: pendingTransmissions.length },
               { id: 'team', label: 'Unit Matrix', icon: Users }
             ].map(item => (
               <button 
                 key={item.id} 
-                onClick={() => setCurrentPage(item.id as Page)} 
+                onClick={() => {
+                  setCurrentPage(item.id as Page);
+                  if (item.id === 'queue') setQueueTab('pending');
+                }} 
                 className={`w-full flex items-center justify-between px-5 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${currentPage === item.id ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'}`}
               >
                 <div className="flex items-center gap-3"><item.icon className="w-4 h-4" /> {item.label}</div>
@@ -465,7 +629,7 @@ const SupervisorDashboard: React.FC<Props> = ({
         </div>
       </div>
       <div className="flex-grow">
-        <header className="mb-8 space-y-1"><h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">{currentPage === 'dashboard' ? 'Unit Overview' : currentPage === 'queue' ? 'Queue Management' : 'Secure Terminal'}</h1><p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.3em]">{user.department} Controller Node</p></header>
+        <header className="mb-8 space-y-1"><h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">{currentPage === 'dashboard' ? 'Unit Overview' : currentPage === 'queue' ? 'Registry Management' : currentPage === 'team' ? 'Unit Matrix' : 'Secure Terminal'}</h1><p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.3em]">{user.department} Controller Node</p></header>
         {currentView()}
       </div>
     </div>

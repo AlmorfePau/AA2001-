@@ -10,6 +10,7 @@ export interface SystemStats {
   responseTime: string;
   accuracy: string;
   uptime: string;
+  supervisorComment?: string;
   // Grading Matrix
   ratings?: {
     performance: number;   // 45% weight
@@ -31,6 +32,7 @@ export interface Transmission extends SystemStats {
   systemStatus: string;
   projectReport?: string;
   attachments?: { name: string, type: string, size: string }[];
+  status?: 'validated' | 'rejected';
 }
 
 export interface AuditEntry {

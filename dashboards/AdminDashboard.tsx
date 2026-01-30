@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { User, AuditEntry, UserRole } from '../types';
+import { jsPDF } from 'jspdf';
 import { 
   Settings, 
   Terminal, 
@@ -12,22 +13,25 @@ import {
   X,
   UserPlus,
   ChevronDown,
-  Trash2,
-  Save
+  Save,
+  Scale,
+  Percent,
+  Calculator,
+  ShieldCheck,
+  RotateCcw
 } from 'lucide-react';
 
 interface Props {
   user: User;
   auditLogs: AuditEntry[];
   onAddAuditEntry: (action: string, details: string, type?: 'INFO' | 'OK' | 'WARN', userName?: string) => void;
-  onDeleteUser: (userId: string, userName: string) => void;
 }
 
 const INITIAL_DEPARTMENTS = ['Technical', 'Sales', 'Marketing', 'Admin', 'Accounting'];
 const ADMIN_VERIFICATION_KEY = "SECURE-AA2000";
 const DEFAULT_NODE_PASSKEY = "12345";
 
-const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onDeleteUser }) => {
+const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const deptTabsRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -52,15 +56,22 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onD
     return INITIAL_DEPARTMENTS.reduce((acc, dept) => ({ ...acc, [dept]: [] }), {});
   });
 
+  const [gradingConfig, setGradingConfig] = useState(() => {
+    const saved = localStorage.getItem('aa2001_grading_config');
+    return saved ? JSON.parse(saved) : {
+      perfWeight: 45,
+      profWeight: 35,
+      behWeight: 20
+    };
+  });
+
   const [activeDept, setActiveDept] = useState<string>('Technical');
   const [transferringNode, setTransferringNode] = useState<string | null>(null);
   const [isProvisioning, setIsProvisioning] = useState(false);
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [newEmployeeRole, setNewEmployeeRole] = useState<UserRole>(UserRole.EMPLOYEE);
-  const [draggedUser, setDraggedUser] = useState<string | null>(null);
   const [editingNode, setEditingNode] = useState<{ originalName: string, name: string, role: UserRole } | null>(null);
 
-  // Use a version counter to force-refresh roleMap when localStorage changes
   const [registryVersion, setRegistryVersion] = useState(0);
 
   const roleMap = useMemo(() => {
@@ -84,6 +95,10 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onD
   useEffect(() => {
     localStorage.setItem('aa2001_admin_users', JSON.stringify(usersByDept));
   }, [usersByDept]);
+
+  useEffect(() => {
+    localStorage.setItem('aa2001_grading_config', JSON.stringify(gradingConfig));
+  }, [gradingConfig]);
 
   const scrollToBottom = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -129,43 +144,9 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onD
     setEditingNode(null);
   };
 
-  const handleDeleteNode = (userName: string) => {
-    // Root security check
-    if (userName === "Paulo Almorfe") {
-       triggerToast('Security Violation', 'Root administrator accounts cannot be purged.');
-       onAddAuditEntry('SECURITY_ALERT', 'Denied unauthorized attempt to purge Root Administrator node.', 'WARN');
-       return;
-    }
-
-    // Confirmation Protocol
-    if (!window.confirm(`STRICT PROTOCOL: ARE YOU ABSOLUTELY SURE YOU WANT TO PERMANENTLY REMOVAL THE NODE "${userName}" FROM THE CORE REGISTRY? THIS ACTION IS IRREVERSIBLE.`)) return;
-
-    // 1. Calculate the user's stable ID (matching LoginCard logic)
-    const userId = btoa(userName).substring(0, 12);
-    
-    // 2. Trigger global purge (registry, stats, etc in App state and localStorage)
-    onDeleteUser(userId, userName);
-
-    // 3. Update local Admin dashboard state (purge from the internal state list)
-    setUsersByDept(prev => {
-      const updated = { ...prev };
-      Object.keys(updated).forEach(dept => {
-        updated[dept] = (updated[dept] || []).filter(u => u !== userName);
-      });
-      return updated;
-    });
-
-    // 4. Force refresh of the registry data for the dashboard UI
-    setRegistryVersion(v => v + 1);
-
-    triggerToast('Node Removed', `Personnel record for ${userName} purged from core system.`);
-    setEditingNode(null);
-  };
-
   const handleExecuteTransfer = (userName: string, targetDept: string) => {
     if (!userName) return;
     
-    // Find where the user is currently located in the state
     let sourceDept = activeDept;
     Object.keys(usersByDept).forEach(dept => {
       if (usersByDept[dept].includes(userName)) {
@@ -234,9 +215,68 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onD
   };
 
   const handleExportLogs = () => {
-    onAddAuditEntry('ADMIN_EXPORT', 'ISO-9001 Audit Trail exported by administrator', 'INFO');
-    triggerToast('Audit Export', 'ISO-9001 Logs compiled and exported.');
+    try {
+      const doc = new jsPDF();
+      const margin = 20;
+      let y = 25;
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text("AA2000 SECURITY AND TECHNOLOGY SOLUTIONS INC.", margin, y);
+      y += 8;
+      doc.setFontSize(10);
+      doc.text("ISO-9001 AUDIT TRAIL REPORT", margin, y);
+      y += 10;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(`Date Generated: ${new Date().toLocaleString()}`, margin, y);
+      y += 5;
+      doc.text(`Authorizing Admin: ${user.name}`, margin, y);
+      y += 5;
+      doc.text(`Report Hash: ${Math.random().toString(36).substring(2, 15).toUpperCase()}`, margin, y);
+      y += 10;
+      doc.setFont("helvetica", "bold");
+      doc.text("TIMESTAMP", margin, y);
+      doc.text("ACTION", margin + 35, y);
+      doc.text("OPERATOR", margin + 70, y);
+      doc.text("DETAILS", margin + 110, y);
+      y += 4;
+      doc.line(margin, y, 190, y);
+      y += 8;
+      doc.setFont("helvetica", "normal");
+      auditLogs.forEach((log) => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        const timestamp = new Date(log.timestamp).toLocaleTimeString();
+        doc.text(timestamp, margin, y);
+        doc.text(log.action, margin + 35, y);
+        doc.text(log.user, margin + 70, y);
+        const splitDetails = doc.splitTextToSize(log.details, 70);
+        doc.text(splitDetails, margin + 110, y);
+        y += (splitDetails.length * 4) + 4;
+      });
+      if (y > 260) { doc.addPage(); y = 20; }
+      y += 10;
+      doc.setFont("helvetica", "bolditalic");
+      doc.text("END OF REPORT - CONFIDENTIAL DATA - ISO COMPLIANT", margin, y);
+      doc.save(`AA2000_AuditLog_${new Date().toISOString().split('T')[0]}.pdf`);
+      onAddAuditEntry('ADMIN_EXPORT', 'ISO-9001 Audit Trail exported as binary PDF', 'INFO');
+      triggerToast('Audit Export', 'ISO-9001 Logs compiled as valid PDF and downloaded.');
+    } catch (error) {
+      console.error("PDF Generation failed:", error);
+      onAddAuditEntry('ADMIN_EXPORT_FAIL', 'Failed to generate binary PDF audit trail', 'WARN');
+    }
   };
+
+  const handleResetWeights = () => {
+    setGradingConfig({
+      perfWeight: 45,
+      profWeight: 35,
+      behWeight: 20
+    });
+    onAddAuditEntry('ADMIN_CONFIG', 'Grading coefficients reset to system standard defaults (45/35/20)', 'INFO');
+    triggerToast('Protocol Reset', 'Grading weights restored to ISO-standard.');
+  };
+
+  const totalWeight = gradingConfig.perfWeight + gradingConfig.profWeight + gradingConfig.behWeight;
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-12 animate-in fade-in duration-700">
@@ -358,13 +398,6 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onD
                 <button
                   key={dept}
                   onClick={() => setActiveDept(dept)}
-                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50'); }}
-                  onDragLeave={(e) => e.currentTarget.classList.remove('bg-blue-50')}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.currentTarget.classList.remove('bg-blue-50');
-                    if (draggedUser) handleExecuteTransfer(draggedUser, dept);
-                  }}
                   className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${
                     activeDept === dept ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
                   }`}
@@ -413,10 +446,7 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onD
               {(usersByDept[activeDept] || []).map((userName) => (
                 <div 
                   key={userName} 
-                  draggable
-                  onDragStart={() => setDraggedUser(userName)}
-                  onDragEnd={() => setDraggedUser(null)}
-                  className="group flex items-center justify-between p-5 bg-slate-50/40 rounded-[2rem] hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100 cursor-grab active:cursor-grabbing"
+                  className="group flex items-center justify-between p-5 bg-slate-50/40 rounded-[2rem] hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100"
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center text-xs font-black text-blue-600 shadow-sm">
@@ -461,14 +491,6 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onD
                         </div>
                       )}
                     </div>
-                    {/* Trashcan button to delete person */}
-                    <button 
-                      onClick={() => handleDeleteNode(userName)}
-                      className="p-2.5 rounded-xl text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
-                      title="De-provision Node (Delete)"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
                 </div>
               ))}
@@ -503,33 +525,102 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onD
         </div>
 
         <div className="lg:col-span-4 space-y-8">
-          <div className="bg-[#0b1222] rounded-[3rem] p-10 shadow-2xl text-white relative overflow-hidden">
+          <div className="bg-[#0b1222] rounded-[3rem] p-10 shadow-2xl text-white relative overflow-hidden flex flex-col min-h-[800px]">
             <div className="absolute top-0 right-0 w-48 h-48 bg-blue-600/10 blur-[100px] rounded-full -mr-24 -mt-24"></div>
-            <div className="flex items-center gap-4 mb-16">
-              <div className="w-11 h-11 bg-blue-600 rounded-2xl flex items-center justify-center">
-                <CircleDollarSign className="w-5 h-5 text-white" />
+            
+            <div className="flex items-center gap-4 mb-12 relative z-10">
+              <div className="w-11 h-11 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-900/40">
+                <Scale className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h3 className="text-xs font-black uppercase tracking-[0.1em] mb-1">P3 REALIZATION</h3>
-                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">VALIDATED PAYOUT</p>
+                <h3 className="text-xs font-black uppercase tracking-[0.1em] mb-1">GRADING PROTOCOL</h3>
+                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">WEIGHTED COEFFICIENTS</p>
               </div>
             </div>
-            <div className="space-y-16">
-              <div>
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">VALIDATED MULTIPLIER</p>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-6xl font-black tracking-tighter">1.00</span>
-                  <span className="text-blue-500 text-2xl font-black italic">x</span>
+
+            <div className="space-y-10 relative z-10">
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Performance (Result, Quality, Time)</p>
+                    <span className="text-blue-400 text-xs font-black">{gradingConfig.perfWeight}%</span>
+                  </div>
+                  <input 
+                    type="range" min="0" max="100" 
+                    className="w-full accent-blue-600 bg-white/10 h-1.5 rounded-full appearance-none cursor-pointer"
+                    value={gradingConfig.perfWeight}
+                    onChange={(e) => setGradingConfig({...gradingConfig, perfWeight: parseInt(e.target.value)})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Proficiency (Skills, Competency)</p>
+                    <span className="text-blue-400 text-xs font-black">{gradingConfig.profWeight}%</span>
+                  </div>
+                  <input 
+                    type="range" min="0" max="100" 
+                    className="w-full accent-blue-600 bg-white/10 h-1.5 rounded-full appearance-none cursor-pointer"
+                    value={gradingConfig.profWeight}
+                    onChange={(e) => setGradingConfig({...gradingConfig, profWeight: parseInt(e.target.value)})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Professionalism (Behavior, Safety)</p>
+                    <span className="text-blue-400 text-xs font-black">{gradingConfig.behWeight}%</span>
+                  </div>
+                  <input 
+                    type="range" min="0" max="100" 
+                    className="w-full accent-blue-600 bg-white/10 h-1.5 rounded-full appearance-none cursor-pointer"
+                    value={gradingConfig.behWeight}
+                    onChange={(e) => setGradingConfig({...gradingConfig, behWeight: parseInt(e.target.value)})}
+                  />
+                </div>
+                <div className={`flex justify-between items-center p-4 rounded-2xl border ${totalWeight === 100 ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+                  <p className="text-[10px] font-black uppercase tracking-widest">Total Weight Distribution</p>
+                  <p className={`text-xl font-black ${totalWeight === 100 ? 'text-emerald-400' : 'text-red-400'}`}>{totalWeight}%</p>
                 </div>
               </div>
-              <div className="space-y-5">
-                <div className="flex justify-between items-end">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">PROJECTED YIELD</p>
-                  <p className="text-3xl font-black text-[#10b981] tracking-tight">₱25,000</p>
+
+              <button 
+                onClick={handleResetWeights}
+                className="w-full p-8 bg-blue-600/5 border border-blue-500/20 rounded-[2.5rem] flex flex-col items-center justify-center gap-4 group hover:bg-blue-600/10 transition-all"
+              >
+                <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:rotate-[-180deg] transition-transform duration-500">
+                  <RotateCcw className="w-6 h-6 text-white" />
                 </div>
-                <div className="h-1.5 bg-slate-800/50 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-600 rounded-full" style={{ width: '100%' }}></div>
+                <div className="text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400 mb-1">Standard Restore</p>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Reset weights to 45% | 35% | 20%</p>
                 </div>
+              </button>
+
+              <div className="space-y-4">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Incentive Eligibility Tiers</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {[
+                    { range: '90-100%', pct: '100%' },
+                    { range: '85-89%', pct: '75%' },
+                    { range: '80-84%', pct: '50%' },
+                    { range: '75-79%', pct: '25%' },
+                    { range: 'Below 75%', pct: '0%' }
+                  ].map((tier, i) => (
+                    <div key={i} className="flex justify-between items-center px-4 py-2.5 bg-white/5 rounded-xl border border-white/5 text-[10px] font-bold uppercase tracking-widest">
+                      <span className="text-slate-400">{tier.range}</span>
+                      <span className="text-blue-400">{tier.pct} Yield</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-white/5 flex flex-col gap-4">
+                <div className="flex items-center gap-3 text-slate-500">
+                  <ShieldCheck className="w-4 h-4" />
+                  <p className="text-[8px] font-black uppercase tracking-widest">Configures Global Hierarchy Grading</p>
+                </div>
+                {totalWeight !== 100 && (
+                  <p className="text-[9px] text-red-400 font-bold uppercase tracking-tight italic">Warning: Weight coefficients must sum to exactly 100%.</p>
+                )}
               </div>
             </div>
           </div>

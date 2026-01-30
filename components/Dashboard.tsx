@@ -9,11 +9,12 @@ import ExecutiveDashboard from '../dashboards/ExecutiveDashboard';
 interface DashboardProps {
   user: User;
   pendingTransmissions: Transmission[];
+  transmissionHistory: Transmission[];
   validatedStats: Record<string, SystemStats>;
   auditLogs: AuditEntry[];
   announcements: Announcement[];
   onTransmit: (t: Transmission) => void;
-  onValidate: (id: string, overrides?: SystemStats) => void;
+  onValidate: (id: string, overrides?: SystemStats, status?: 'validated' | 'rejected') => void;
   onPostAnnouncement: (message: string) => void;
   onDeleteAnnouncement: (id: string) => void;
   onAddAuditEntry: (action: string, details: string, type?: 'INFO' | 'OK' | 'WARN', userName?: string) => void;
@@ -23,6 +24,7 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ 
   user, 
   pendingTransmissions, 
+  transmissionHistory,
   validatedStats, 
   auditLogs,
   announcements,
@@ -40,6 +42,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           user={user} 
           validatedStats={validatedStats[user.id]} 
           pendingTransmissions={pendingTransmissions}
+          transmissionHistory={transmissionHistory}
           announcements={announcements}
           onTransmit={onTransmit} 
         />
@@ -49,6 +52,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <SupervisorDashboard 
           user={user} 
           pendingTransmissions={pendingTransmissions} 
+          transmissionHistory={transmissionHistory}
           announcements={announcements}
           onValidate={onValidate} 
           onAddAuditEntry={onAddAuditEntry}
@@ -59,7 +63,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     case UserRole.DEPT_HEAD:
       return <DeptHeadDashboard user={user} validatedStats={validatedStats} />;
     case UserRole.ADMIN:
-      return <AdminDashboard user={user} auditLogs={auditLogs} onAddAuditEntry={onAddAuditEntry} onDeleteUser={onDeleteUser} />;
+      return <AdminDashboard user={user} auditLogs={auditLogs} onAddAuditEntry={onAddAuditEntry} />;
     case UserRole.EXECUTIVE:
       return <ExecutiveDashboard user={user} />;
     default:
