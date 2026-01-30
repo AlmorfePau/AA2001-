@@ -252,7 +252,7 @@ const LoginCard: React.FC<LoginCardProps> = ({ onLogin, onAddAuditEntry }) => {
         <div className="flex items-center gap-2">
            <Cpu className="w-3.5 h-3.5 text-slate-300" />
            <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.3em]">
-             AA2001 Distributed Intelligence Network
+             AA2000 Distributed Intelligence Network
            </p>
         </div>
         <div className="px-4 py-1 bg-slate-100/50 rounded-full border border-slate-200/50">

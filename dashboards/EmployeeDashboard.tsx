@@ -9,6 +9,7 @@ import AdminDeptDashboard from './departments/AdminDeptDashboard';
 interface Props {
   user: User;
   validatedStats?: SystemStats;
+  pendingTransmissions: Transmission[];
   announcements: Announcement[];
   onTransmit: (t: Transmission) => void;
 }

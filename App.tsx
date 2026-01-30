@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { User, UserRole, Transmission, SystemStats, AuditEntry, SystemNotification, Announcement } from './types';
 import LoginCard from './components/LoginCard';
@@ -231,7 +230,7 @@ const App: React.FC = () => {
       )}
       
       <footer className="py-6 text-center text-slate-400 text-sm">
-        &copy; {new Date().getFullYear()} AA2001 Security and Technology Solutions Inc. All Rights Reserved.
+        &copy; {new Date().getFullYear()} AA2000 Security and Technology Solutions Inc. All Rights Reserved.
       </footer>
     </div>
   );

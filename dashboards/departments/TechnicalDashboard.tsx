@@ -4,12 +4,13 @@ import {
   Activity, CheckCircle2, Clock, Briefcase, MapPin, HardHat, AlertTriangle, 
   FileCheck, ChevronRight, Info, ChevronLeft, FileText, ShieldCheck, Zap, 
   CheckCircle, Wrench, Upload, ChevronDown, Calendar, Paperclip, FileImage, 
-  File as FileIcon, X, Eye, Trophy, Target, TrendingUp
+  File as FileIcon, X, Eye, Trophy, Target, TrendingUp, AlertCircle
 } from 'lucide-react';
 
 interface Props {
   user: User;
   validatedStats?: SystemStats;
+  pendingTransmissions: Transmission[];
   announcements: Announcement[];
   onTransmit: (t: Transmission) => void;
 }
@@ -22,7 +23,7 @@ const CLASSIFICATIONS = [
   { name: 'Site Survey', description: 'Environmental and structural analysis for prospective expansion.' }
 ];
 
-const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, announcements, onTransmit }) => {
+const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, pendingTransmissions, announcements, onTransmit }) => {
   const [activeStep, setActiveStep] = useState(1);
   const [isTransmitting, setIsTransmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -89,6 +90,12 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, announcemen
     }, 2000);
   };
 
+  // Status Check Logic
+  const hasUserPending = useMemo(() => 
+    pendingTransmissions.some(t => t.userId === user.id), 
+  [pendingTransmissions, user.id]);
+  
+  const isValidated = !!validatedStats?.ratings;
   const score = validatedStats?.ratings?.finalScore || 0;
   const incentivePct = validatedStats?.ratings?.incentivePct || 0;
   const incentivePay = user.incentiveTarget * incentivePct;
@@ -110,7 +117,7 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, announcemen
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <span className="px-3 py-1 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-md">TECHNICAL DEPT</span>
-            <span className="px-3 py-1 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-md italic italic">COMPLIANCE MODE</span>
+            <span className="px-3 py-1 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-md italic">COMPLIANCE MODE</span>
           </div>
           <h1 className="text-[44px] font-black text-slate-900 tracking-tight leading-none uppercase">Field Log Terminal</h1>
           <p className="text-slate-500 text-sm mt-1 font-medium italic">Authorized ISO-9001 Data Entry Node</p>
@@ -121,35 +128,63 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, announcemen
         </div>
       </div>
 
-      {validatedStats?.ratings && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in zoom-in-95 duration-700">
-          <div className="lg:col-span-12 bg-white rounded-[3rem] p-10 border border-slate-100 shadow-xl relative overflow-hidden flex flex-col md:flex-row items-center gap-12">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-[80px] -mr-32 -mt-32"></div>
-            
-            <div className="relative shrink-0 flex flex-col items-center">
-               <svg className="w-48 h-48" viewBox="0 0 100 100">
-                 <circle cx="50" cy="50" r="40" fill="none" stroke="#f1f5f9" strokeWidth="10" />
-                 <circle cx="50" cy="50" r="40" fill="none" stroke="url(#blue-grad)" strokeWidth="10" strokeLinecap="round" strokeDasharray={dash} strokeDashoffset={offset} className="transition-all duration-1000 ease-out" transform="rotate(-90 50 50)" />
-                 <defs>
-                   <linearGradient id="blue-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                     <stop offset="0%" stopColor="#2563eb" />
-                     <stop offset="100%" stopColor="#3b82f6" />
-                   </linearGradient>
-                 </defs>
-                 <text x="50" y="52" className="text-2xl font-black" textAnchor="middle" fill="#0f172a" dominantBaseline="middle">{score}%</text>
-               </svg>
-               <p className="mt-4 text-[10px] font-black text-blue-600 uppercase tracking-[0.4em]">Final Score</p>
+      {/* Permanently Visible Performance Scorecard Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in zoom-in-95 duration-700">
+        <div className="lg:col-span-12 bg-white rounded-[3rem] p-10 border border-slate-100 shadow-xl relative overflow-hidden flex flex-col md:flex-row items-center gap-12">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-[80px] -mr-32 -mt-32"></div>
+          
+          {/* SVG Progress Circle Container */}
+          <div className="relative shrink-0 flex flex-col items-center">
+             <svg className="w-48 h-48" viewBox="0 0 100 100">
+               <circle cx="50" cy="50" r="40" fill="none" stroke="#f1f5f9" strokeWidth="10" />
+               {isValidated ? (
+                 <>
+                   <circle cx="50" cy="50" r="40" fill="none" stroke="url(#blue-grad)" strokeWidth="10" strokeLinecap="round" strokeDasharray={dash} strokeDashoffset={offset} className="transition-all duration-1000 ease-out" transform="rotate(-90 50 50)" />
+                   <defs>
+                     <linearGradient id="blue-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                       <stop offset="0%" stopColor="#2563eb" />
+                       <stop offset="100%" stopColor="#3b82f6" />
+                     </linearGradient>
+                   </defs>
+                   <text x="50" y="52" className="text-2xl font-black" textAnchor="middle" fill="#0f172a" dominantBaseline="middle">{score}%</text>
+                 </>
+               ) : hasUserPending ? (
+                 <>
+                   <circle cx="50" cy="50" r="40" fill="none" stroke="#3b82f6" strokeWidth="10" strokeLinecap="round" strokeDasharray={`${dash/4} ${dash/2}`} className="animate-spin duration-[3s]" transform-origin="center" />
+                   <foreignObject x="30" y="30" width="40" height="40">
+                     <div className="w-full h-full flex items-center justify-center">
+                       <Clock className="w-8 h-8 text-blue-600 animate-pulse" />
+                     </div>
+                   </foreignObject>
+                 </>
+               ) : (
+                 <>
+                   <circle cx="50" cy="50" r="40" fill="none" stroke="#e2e8f0" strokeWidth="10" strokeDasharray="4 4" />
+                   <foreignObject x="30" y="30" width="40" height="40">
+                     <div className="w-full h-full flex items-center justify-center">
+                       <AlertCircle className="w-8 h-8 text-slate-300" />
+                     </div>
+                   </foreignObject>
+                 </>
+               )}
+             </svg>
+             <p className="mt-4 text-[10px] font-black text-blue-600 uppercase tracking-[0.4em]">
+               {isValidated ? 'Final Score' : hasUserPending ? 'Pending Audit' : 'Standby Mode'}
+             </p>
+          </div>
+
+          <div className="flex-grow space-y-8">
+            <div className="flex items-center gap-4">
+              <Trophy className={`w-8 h-8 ${isValidated ? 'text-amber-500' : 'text-slate-200'}`} />
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Performance Scorecard</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  {isValidated ? 'Validated by Supervisor Registry' : hasUserPending ? 'Currently Under Hierarchy Review' : 'Waiting for Initial Transmission'}
+                </p>
+              </div>
             </div>
 
-            <div className="flex-grow space-y-8">
-              <div className="flex items-center gap-4">
-                <Trophy className="w-8 h-8 text-amber-500" />
-                <div>
-                  <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Performance Scorecard</h3>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Validated by Supervisor Registry</p>
-                </div>
-              </div>
-
+            {isValidated && validatedStats?.ratings ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {[
                   { label: 'Performance', score: validatedStats.ratings.performance, weight: '45%', final: ((validatedStats.ratings.performance / 5) * 45).toFixed(1) + '%' },
@@ -168,22 +203,41 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, announcemen
                   </div>
                 ))}
               </div>
-            </div>
+            ) : (
+              <div className="bg-slate-50/80 rounded-[2.5rem] p-10 border border-dashed border-slate-200 flex flex-col items-center justify-center text-center space-y-3">
+                 <p className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                   {hasUserPending ? 'Your field logs are being audited for ISO-9001 compliance' : 'No operational data found for the current cycle'}
+                 </p>
+                 <p className="text-[10px] font-medium text-slate-400 max-w-md leading-relaxed italic">
+                   {hasUserPending 
+                     ? 'Please wait for the Supervisor node to commit your grading matrix. This process ensures data integrity across all technical sectors.' 
+                     : 'Initiate a log transmission using the Field Log Terminal below to activate your performance grading and incentive eligibility.'}
+                 </p>
+              </div>
+            )}
+          </div>
 
-            <div className="shrink-0 bg-[#0b1222] rounded-[2.5rem] p-10 text-white min-w-[280px] shadow-2xl relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[40px] rounded-full"></div>
-               <div className="relative z-10 space-y-6">
-                  <div className="flex items-center gap-3"><TrendingUp className="w-5 h-5 text-emerald-400" /><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Incentive Pay</p></div>
-                  <p className="text-4xl font-black text-emerald-400 tracking-tighter">${incentivePay.toLocaleString()}</p>
-                  <div className="space-y-2 pt-4 border-t border-white/5">
-                    <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-slate-500"><span>Eligibility Range</span><span>{incentivePct * 100}% Yield</span></div>
-                    <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-slate-300"><span>Target Cap</span><span>${user.incentiveTarget.toLocaleString()}</span></div>
+          <div className="shrink-0 bg-[#0b1222] rounded-[2.5rem] p-10 text-white min-w-[280px] shadow-2xl relative overflow-hidden">
+             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[40px] rounded-full"></div>
+             <div className="relative z-10 space-y-6">
+                <div className="flex items-center gap-3"><TrendingUp className={`w-5 h-5 ${isValidated ? 'text-emerald-400' : 'text-slate-600'}`} /><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Incentive Pay</p></div>
+                <p className={`text-4xl font-black tracking-tighter ${isValidated ? 'text-emerald-400' : 'text-slate-700'}`}>
+                  ₱{isValidated ? incentivePay.toLocaleString() : '0.00'}
+                </p>
+                <div className="space-y-2 pt-4 border-t border-white/5">
+                  <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-slate-500">
+                    <span>Eligibility Range</span>
+                    <span>{isValidated ? (incentivePct * 100) + '%' : 'TBD'} Yield</span>
                   </div>
-               </div>
-            </div>
+                  <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-slate-300">
+                    <span>Target Cap</span>
+                    <span>₱{user.incentiveTarget.toLocaleString()}</span>
+                  </div>
+                </div>
+             </div>
           </div>
         </div>
-      )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 space-y-6">
@@ -284,7 +338,7 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, announcemen
                 <div className="flex flex-col items-center justify-center py-10 space-y-10 animate-in zoom-in-95 duration-500">
                   <div className="w-24 h-24 bg-blue-600 rounded-[2.5rem] flex items-center justify-center shadow-2xl animate-pulse"><FileCheck className="w-12 h-12 text-white" /></div>
                   <div className="text-center space-y-3"><h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">ISO-9001 Verification Ready</h3><p className="text-slate-400 text-sm font-medium">Logs compiled and synchronized for hierarchical audit.</p></div>
-                  <div className="w-full max-w-sm bg-slate-50 border border-slate-100 p-8 rounded-[2.5rem] space-y-4">
+                  <div className="w-full max-sm bg-slate-50 border border-slate-100 p-8 rounded-[2.5rem] space-y-4">
                     <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest"><span className="text-slate-400">Integrity</span><span className="text-emerald-500">Certified</span></div>
                     <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest"><span className="text-slate-400">Node</span><span className="text-blue-600">{user.name}</span></div>
                   </div>
@@ -308,7 +362,7 @@ const TechnicalDashboard: React.FC<Props> = ({ user, validatedStats, announcemen
             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 blur-[100px] rounded-full -mr-32 -mt-32"></div>
             <Activity className="w-16 h-16 text-blue-500 mb-8 animate-pulse" />
             <h3 className="text-2xl font-black uppercase tracking-widest mb-2">Node Registry</h3>
-            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em] max-w-[200px] mx-auto leading-relaxed italic">Operational Integrity Framework.</p>
+            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em] max-w-[200px] mx-auto leading-relaxed italic">AA2000 Operational Integrity Framework.</p>
             <div className="mt-12 w-full space-y-3">
                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex justify-between items-center"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Submission Health</p><p className="text-xl font-black text-blue-400 tracking-tight">STABLE</p></div>
                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex justify-between items-center"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">ISO-9001 Compliance</p><p className={`text-xl font-black tracking-tight ${formData.attachments.length > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{formData.attachments.length > 0 ? 'CERTIFIED' : 'WAITING'}</p></div>

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { User, UserRole, Transmission, SystemStats, AuditEntry, Announcement } from '../types';
 import EmployeeDashboard from '../dashboards/EmployeeDashboard';
@@ -40,6 +39,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <EmployeeDashboard 
           user={user} 
           validatedStats={validatedStats[user.id]} 
+          pendingTransmissions={pendingTransmissions}
           announcements={announcements}
           onTransmit={onTransmit} 
         />

@@ -24,7 +24,7 @@ interface Props {
 }
 
 const INITIAL_DEPARTMENTS = ['Technical', 'Sales', 'Marketing', 'Admin', 'Accounting'];
-const ADMIN_VERIFICATION_KEY = "SECURE-AA2001";
+const ADMIN_VERIFICATION_KEY = "SECURE-AA2000";
 const DEFAULT_NODE_PASSKEY = "12345";
 
 const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onDeleteUser }) => {
@@ -525,7 +525,7 @@ const AdminDashboard: React.FC<Props> = ({ user, auditLogs, onAddAuditEntry, onD
               <div className="space-y-5">
                 <div className="flex justify-between items-end">
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">PROJECTED YIELD</p>
-                  <p className="text-3xl font-black text-[#10b981] tracking-tight">$25,000</p>
+                  <p className="text-3xl font-black text-[#10b981] tracking-tight">₱25,000</p>
                 </div>
                 <div className="h-1.5 bg-slate-800/50 rounded-full overflow-hidden">
                   <div className="h-full bg-blue-600 rounded-full" style={{ width: '100%' }}></div>

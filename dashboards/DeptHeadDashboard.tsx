@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { User, SystemStats } from '../types';
 import { 
@@ -69,7 +68,7 @@ const DeptHeadDashboard: React.FC<Props> = ({ user, validatedStats = {} }) => {
             </div>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">BASE SALARY</p>
-              <p className="text-2xl font-black text-[#1e293b] tracking-tight">${user.baseSalary.toLocaleString()}</p>
+              <p className="text-2xl font-black text-[#1e293b] tracking-tight">₱{user.baseSalary.toLocaleString()}</p>
             </div>
           </div>
           <div className="bg-[#f0f7ff] p-6 rounded-[2.5rem] border border-[#dbeafe] shadow-sm flex items-center gap-5 min-w-[220px]">
@@ -78,7 +77,7 @@ const DeptHeadDashboard: React.FC<Props> = ({ user, validatedStats = {} }) => {
             </div>
             <div>
               <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">TARGET INCENTIVE</p>
-              <p className="text-2xl font-black text-[#1e293b] tracking-tight">${user.incentiveTarget.toLocaleString()}</p>
+              <p className="text-2xl font-black text-[#1e293b] tracking-tight">₱{user.incentiveTarget.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -177,7 +176,7 @@ const DeptHeadDashboard: React.FC<Props> = ({ user, validatedStats = {} }) => {
               <div className="space-y-5">
                 <div className="flex justify-between items-end">
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">PROJECTED YIELD</p>
-                  <p className="text-3xl font-black text-[#10b981] tracking-tight">$45,000</p>
+                  <p className="text-3xl font-black text-[#10b981] tracking-tight">₱45,000</p>
                 </div>
                 <div className="h-1.5 bg-slate-800/50 rounded-full overflow-hidden">
                   <div className="h-full bg-blue-600 rounded-full shadow-[0_0_12px_rgba(37,99,235,0.5)]" style={{ width: '100%' }}></div>
